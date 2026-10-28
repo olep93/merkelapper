@@ -1764,3 +1764,35 @@ input:disabled {
     font-size: 12px;
   }
 }
+
+.paper-product {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
+.paper-product-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.5cqw;
+}
+.paper-product-text > span {
+  color: #555;
+}
+.paper-photo {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.paper-photo .product-photo {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+.paper-photo .product-photo img {
+  padding: 0;
+}

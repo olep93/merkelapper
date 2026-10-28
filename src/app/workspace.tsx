@@ -50,6 +50,8 @@ type Layout = {
       eanSize: number;
       quantitySize: number;
       height: number;
+      imageSize: number;
+      imageGap: number;
     }[];
   }[];
 };
@@ -554,7 +556,14 @@ export function Workspace() {
         a.click();
       }
       setTimeout(() => URL.revokeObjectURL(url), 120000);
-      setPdfState("PDF klar. Velg A3 og faktisk størrelse / 100 %.");
+      const missingImages = Number(
+        response.headers.get("X-Missing-Images") || 0,
+      );
+      setPdfState(
+        missingImages
+          ? `PDF klar, men ${missingImages} produktbilde(r) kunne ikke hentes. Åpne PDF-en igjen for å prøve på nytt.`
+          : "PDF klar. Velg A3 og faktisk størrelse / 100 %.",
+      );
     } catch (e) {
       pdfWindow?.close();
       setPdfState("PDF-feil – prøv igjen.");
@@ -949,28 +958,49 @@ export function Workspace() {
                                       gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${(54 * 72) / 25.4}fr`,
                                     }}
                                   >
-                                    <div className="paper-product">
-                                      <strong
-                                        style={{
-                                          fontSize: `${(r.nameSize * 100) / ((277 * 72) / 25.4)}cqw`,
-                                        }}
-                                      >
-                                        {r.nameLines.map((text, j) => (
-                                          <span
-                                            key={j}
-                                            style={{ display: "block" }}
-                                          >
-                                            {text}
-                                          </span>
-                                        ))}
-                                      </strong>
-                                      <span
-                                        style={{
-                                          fontSize: `${(r.eanSize * 100) / ((277 * 72) / 25.4)}cqw`,
-                                        }}
-                                      >
-                                        {l.ean}
-                                      </span>
+                                    <div
+                                      className="paper-product"
+                                      style={{
+                                        gap: `${(r.imageGap * 100) / ((277 * 72) / 25.4)}cqw`,
+                                      }}
+                                    >
+                                      {r.imageSize > 0 && (
+                                        <div
+                                          className="paper-photo"
+                                          style={{
+                                            width: `${(r.imageSize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                            height: `${(r.imageSize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                          }}
+                                        >
+                                          <ProductPhoto
+                                            src={l.product?.imageUrl}
+                                            name={l.name}
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="paper-product-text">
+                                        <strong
+                                          style={{
+                                            fontSize: `${(r.nameSize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                          }}
+                                        >
+                                          {r.nameLines.map((text, j) => (
+                                            <span
+                                              key={j}
+                                              style={{ display: "block" }}
+                                            >
+                                              {text}
+                                            </span>
+                                          ))}
+                                        </strong>
+                                        <span
+                                          style={{
+                                            fontSize: `${(r.eanSize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                          }}
+                                        >
+                                          {l.ean}
+                                        </span>
+                                      </div>
                                     </div>
                                     <b
                                       className="paper-quantity"

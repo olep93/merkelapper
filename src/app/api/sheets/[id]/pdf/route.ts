@@ -1,6 +1,7 @@
 import { requireUser, failure, ApiError } from "@/lib/supabase";
 import { bodySchema } from "@/lib/model";
 import { makePdf } from "@/lib/pdf";
+export const maxDuration = 60;
 export async function GET(
   _: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -23,7 +24,7 @@ export async function GET(
       .eq("revision", sheet.revision)
       .single();
     if (!revision) throw new ApiError("Fant ikke den låste revisjonen.", 404);
-    const { bytes, pages } = await makePdf(
+    const { bytes, pages, missingImages } = await makePdf(
       bodySchema.parse(revision.body),
       id,
       sheet.revision,
@@ -34,6 +35,7 @@ export async function GET(
         "Content-Disposition": `inline; filename="merkelapp-${id.slice(0, 8)}-r${sheet.revision}.pdf"`,
         "Cache-Control": "private, no-store",
         "X-Page-Count": String(pages),
+        "X-Missing-Images": String(missingImages),
       },
     });
   } catch (e) {

@@ -3,6 +3,9 @@ const config: NextConfig = {
   basePath: "/merkelapp",
   assetPrefix: "/merkelapp",
   poweredByHeader: false,
+  outputFileTracingIncludes: {
+    "/api/sheets/**/pdf": ["./public/zxing_reader.wasm"],
+  },
   async headers() {
     return [
       {

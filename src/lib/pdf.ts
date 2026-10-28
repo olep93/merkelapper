@@ -1,4 +1,5 @@
-import { rgb } from "pdf-lib";
+import { rgb, type PDFImage } from "pdf-lib";
+import { loadPrintImages, type PrintImageLoader } from "./print-images";
 import {
   fonts,
   planPages,
@@ -68,9 +69,29 @@ export function eanBits(ean: string) {
     "101"
   );
 }
-export async function makePdf(body: SheetBody, id: string, revision: number) {
+export async function makePdf(
+  body: SheetBody,
+  id: string,
+  revision: number,
+  options: { imageLoader?: PrintImageLoader } = {},
+) {
   const { doc, font, bold } = await fonts();
   const pages = planPages(body.lines, font, bold);
+  const prepared = await (options.imageLoader || loadPrintImages)(body.lines);
+  const embedded = new Map<string, PDFImage>();
+  let missingImages = 0,
+    maskedImages = 0;
+  for (const line of body.lines) {
+    const url = line.product?.imageUrl;
+    if (!url) continue;
+    const image = prepared.get(url);
+    if (!image) {
+      missingImages++;
+      continue;
+    }
+    if (!embedded.has(url)) embedded.set(url, await doc.embedJpg(image.bytes));
+    if (image.masks.length) maskedImages++;
+  }
   doc.setTitle(`Merkelapp ${id.slice(0, 8)} - revisjon ${revision}`);
   doc.setCreator("Jobbverktøy - Merkelapp");
   for (const [pi, layout] of pages.entries()) {
@@ -133,12 +154,56 @@ export async function makePdf(body: SheetBody, id: string, revision: number) {
           thickness: 0.5,
           color: lineColor,
         });
+      const imageUrl = r.line.product?.imageUrl;
+      const preparedImage = imageUrl ? prepared.get(imageUrl) : undefined;
+      if (r.imageSize && imageUrl) {
+        const image = embedded.get(imageUrl),
+          boxX = MARGIN + 10,
+          boxY = mid - r.imageSize / 2;
+        if (image && preparedImage) {
+          const scale = Math.min(
+            r.imageSize / preparedImage.width,
+            r.imageSize / preparedImage.height,
+          );
+          const width = preparedImage.width * scale,
+            height = preparedImage.height * scale;
+          const ix = boxX + (r.imageSize - width) / 2,
+            iy = mid - height / 2;
+          page.drawImage(image, { x: ix, y: iy, width, height });
+          for (const mask of preparedImage.masks)
+            page.drawRectangle({
+              x: ix + mask.x * scale,
+              y: iy + height - (mask.y + mask.height) * scale,
+              width: mask.width * scale,
+              height: mask.height * scale,
+              color: rgb(1, 1, 1),
+            });
+        } else {
+          page.drawRectangle({
+            x: boxX,
+            y: boxY,
+            width: r.imageSize,
+            height: r.imageSize,
+            borderWidth: 0.5,
+            borderColor: rgb(0.88, 0.88, 0.88),
+          });
+          const label = "Bilde mangler";
+          page.drawText(label, {
+            x: boxX + (r.imageSize - font.widthOfTextAtSize(label, 7)) / 2,
+            y: mid - 2,
+            size: 7,
+            font,
+            color: gray,
+          });
+        }
+      }
+      const textX = MARGIN + 10 + r.imageSize + r.imageGap;
       const textHeight =
         r.nameLines.length * r.nameSize * 1.17 + r.eanSize * 1.3;
       let ty = mid + textHeight / 2 - r.nameSize;
       for (const name of r.nameLines) {
         page.drawText(name, {
-          x: MARGIN + 10,
+          x: textX,
           y: ty,
           size: r.nameSize,
           font: bold,
@@ -146,7 +211,7 @@ export async function makePdf(body: SheetBody, id: string, revision: number) {
         ty -= r.nameSize * 1.17;
       }
       page.drawText(r.line.ean, {
-        x: MARGIN + 10,
+        x: textX,
         y: ty - 5,
         size: r.eanSize,
         font,
@@ -204,5 +269,10 @@ export async function makePdf(body: SheetBody, id: string, revision: number) {
       font,
     });
   }
-  return { bytes: await doc.save(), pages: pages.length };
+  return {
+    bytes: await doc.save(),
+    pages: pages.length,
+    missingImages,
+    maskedImages,
+  };
 }

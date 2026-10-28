@@ -29,7 +29,7 @@
 - Kamera på faktisk iPhone/Safari og Android/Chrome, inkludert valg av bakre objektiv, lys/zoom, skjermlås og lengre bruk. Etikettfiltesten bekrefter avkodingen, men erstatter ikke kameratest.
 - Butikkens etikettsett og akseptansemål fra prosjektintroduksjonen er ikke målt ennå.
 - Fysisk A3-utskrift ved 100 %, lest med både telefon og håndskanner.
-- Delt arbeidsgruppearkiv inngår ikke i førsteutgaven; lapper er private per konto. Produktbilder vises i grensesnittet, og PDF-en er fortsatt tekst/vektor uten produktbilder.
+- Delt arbeidsgruppearkiv inngår ikke i førsteutgaven; lapper er private per konto. Produktbilder vises i grensesnittet og i den oppdaterte PDF-en.
 - Lengre nettutfall må prøves på faktiske telefoner. UI viser serverbekreftet lagring, nettfeil og konflikter. Ulagrede endringer holdes i den åpne siden; lukk ikke fanen under nettutfall.
 
 Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
@@ -41,3 +41,14 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Verifisert produktmetadata følger kontolagring og låst revisjon, mens manuelt varenavn beholdes. Dette er testet mot ekte HTTP-ruter på preview og gjennom jobbverktoy.no.
 - Mobilgrensesnittet er prøvd med virkelig varenavn/bilde, tomt antall, eget navn skrevet før oppslaget kom tilbake, lagring og gjenåpning. Produktbildet var lastet og fulgte den lagrede linjen.
 - Ved ukjent EAN eller timeout beholdes manuell registrering. Ingen test skal tolkes som at hele Obs BYGG-sortimentet er tilgjengelig på nett.
+
+## Tillegg: produktbilder i PDF
+
+- Produktbildet er gjengitt i en kontrollutskrift fra et lokalt bevart snapshot av brukerens lapp. Ingen lappedata ble endret under kontrollen.
+- Ti reelle produktbilder er gjengitt på ett A3-ark uten bildeutfall. PDF-en er kontrollert visuelt, og hver genererte EAN er avkodet fra en 200 dpi-rendering i riktig radrekkefølge.
+- En test med en konkurrerende EAN i selve produktbildet bekrefter at bildekoden dekkes og ikke blir avlest fra den ferdige PDF-en. Den genererte varekoden blir fremdeles lest korrekt.
+- Egne tester kontrollerer bildeplass, balansert 6 + 6-fordeling, faktisk bildeobjekt på PDF-siden og at bildeutfall gir en brukbar PDF med oppgitt manglende bilde.
+- Skannbare mål for den genererte koden er uendret. Fysisk papirkontroll gjenstår.
+
+- Verifisert på Vercel-preview: ti bildeobjekter er faktisk tegnet på én A3-side, ingen manglende bilder, omtrent 386 kB PDF. Første servergenerering i denne testen tok cirka 4,6 sekunder, inkludert bildebehandlingen.
+- Kontrollert gjennom jobbverktoy.no etter publisering: alle ti produktbilder er innebygd, ingen bildeutfall, og portalens rutekontroll passerer for alle verktøy.

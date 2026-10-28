@@ -9,7 +9,7 @@ Mobilskanning, private tellingslapper og balansert A3-utskrift i Jobbverktøy.
 - Felles Supabase-innlogging med portalen. Krever `merkelapp` i brukerens serverstyrte `app_metadata.apps`.
 - Egne lapper per konto. Ny lapp, søk, autosparing og åpning på mobil/PC.
 - ZXing-C++ via `zxing-wasm`, med lokalt servert WASM. EAN-8/13, kontrollsiffer, bakre kamera, smalt avlesningsområde, kameravalg og lys/zoom der tilgjengelig. Pause ved treff og stopp ved lukking/skjermlås. Manuell EAN eller HID-skanner i EAN-feltet med Enter. Bildeavlesning som reserve.
-- Eksakt EAN-oppslag mot Obs BYGG henter varenavn, pakningsvariant og produktbilde. Treff bekreftes mot strukturerte produktdata på produktsiden. Navnet kan redigeres, og manuell registrering fungerer ved manglende treff eller teknisk feil. Bilde vises ved registrering og i varelisten.
+- Eksakt EAN-oppslag mot Obs BYGG henter varenavn, pakningsvariant og produktbilde. Treff bekreftes mot strukturerte produktdata på produktsiden. Navnet kan redigeres, og manuell registrering fungerer ved manglende treff eller teknisk feil. Bilde vises ved registrering, i varelisten og i A3-PDF-en.
 - Antall starter tomt og må være et heltall >= 0. Duplikat-EAN krever eksplisitt Legg til/Erstatt/Avbryt. Fjernede linjer kan angres.
 - Lås før utskrift. PDF genereres fra en uforanderlig revisjon. Gjenåpning krever ny låsing før neste utskrift.
 - A3 stående, vektorstrekkoder, lesbar EAN og bare tallet i antallskolonnen. Målt tekst og balansert sidefordeling: normalt 10 varer på ett ark, 12 fordelt 6+6. Færre varer får større skrift og mer plass. Ekstremt store antall får bredere antallskolonne.
@@ -39,7 +39,7 @@ Portalen har Merkelapp i `tools.ts`, `zones.ts`, rewrites, service worker-unntak
 
 ### Kontroll og begrensninger
 
-Se `QA.md` for hva som faktisk er kontrollert. Mobilkamera på fysiske etiketter og papirskanning må prøves i butikken. Lokal forhåndsvisning viser sidefordelingen; PDF-en er den autoritative utskriften. PDF-en bruker fortsatt kun de genererte vektorstrekkodene og tekst, slik at produktbilder ikke kan introdusere konkurrerende skannbare koder. Produktbilder vises i registreringen og varelisten.
+Se `QA.md` for hva som faktisk er kontrollert. Mobilkamera på fysiske etiketter og papirskanning må prøves i butikken. Lokal forhåndsvisning viser sidefordelingen; PDF-en er den autoritative utskriften. PDF-en inkluderer produktbilder og de genererte vektorstrekkodene. Bilder undersøkes med ZXing før innbygging; påviste koder dekkes med hvite vektorfelt i PDF-en, slik at de ikke konkurrerer med varelinjens kode. Dersom et bilde ikke kan hentes eller undersøkes, vises en plassholder, og grensesnittet oppgir antallet manglende bilder.
 
 `node scripts/check-database.mjs` oppretter og rydder bort isolerte testkontoer for integrasjonstesten. `node scripts/qa-account.mjs create` lager en midlertidig UI-konto i en ignorert lokal fil; fjern den etter test med `node scripts/qa-account.mjs remove`. `node scripts/check-http.mjs <portal-url>` bruker denne kontoen til å teste de ekte HTTP-rutene.
 
@@ -62,3 +62,11 @@ Dette er en begrenset testintegrasjon mot den offentlige nettbutikken, ikke en a
 - Et forsinket svar kan ikke fylle inn en annen vare eller overskrive et manuelt redigert navn. Eksisterende linjer beholder navnet sitt; «Bruk varenavnet fra Obs BYGG» er et eksplisitt valg.
 
 Kjør `pnpm exec tsx scripts/check-products.ts` for de ti reelle eksempel-EAN-ene og bildene. `node scripts/check-product-http.mjs <test-url>` kontrollerer oppslag, metadata, kontolagring, manuelt navn, revisjon og PDF mot en midlertidig QA-konto.
+
+### Produktbilder i A3-PDF
+
+Bilder hentes fra den låste revisjonens eksisterende bilde-URL, behandles på serveren med Sharp, og undersøkes av ZXing-WASM før de tegnes i PDF-en. PNG/JPEG/WebP blir til JPEG med begrenset oppløsning. Et originalbilde blir ikke erstattet i produktdataene. Påviste strekkoder/QR-koder dekkes i den tegnede PDF-en; dersom sikker behandling feiler, utelates bildet. Prosessen har en samlet tidsgrense, avgrensede bildefiler og tre samtidige nedlastinger. Forberedte bilder mellomlagres i fire timer.
+
+Layoutberegningen reserverer plass til bildet og måler teksten ved siden av. Forhåndsvisningen bruker samme mål og sidefordeling. Bilder gjør ikke de genererte strekkodene mindre. Ti vanlige varer med bilder er testet på én A3-side, og tolv balanseres fremdeles som seks og seks. Nedlast en ny PDF for å få den oppdaterte utskriftsmalen.
+
+`public/zxing_reader.wasm` inkluderes eksplisitt i PDF-rutens filsporing, slik at avkoderen fungerer på Vercel. Test med `pnpm exec tsx scripts/render-image-fixtures.ts` etter produktoppslagstesten, og `node scripts/check-pdf-images-http.mjs <preview-url>` mot en midlertidig QA-konto.

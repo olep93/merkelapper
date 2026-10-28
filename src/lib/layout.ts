@@ -15,6 +15,8 @@ export type RowLayout = {
   nameSize: number;
   eanSize: number;
   quantitySize: number;
+  imageSize: number;
+  imageGap: number;
 };
 export type PageLayout = {
   rows: RowLayout[];
@@ -22,7 +24,12 @@ export type PageLayout = {
   quantityWidth: number;
 };
 export function printable(text: string, font: PDFFont) {
-  return [...text.replace(/[\r\n\t]+/g, " ").replace(/[–—−]/g, "-")]
+  return [
+    ...text
+      .normalize("NFC")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[–—−]/g, "-"),
+  ]
     .map((c) => {
       try {
         font.encodeText(c);
@@ -76,8 +83,19 @@ function measure(
   nameWidth: number,
   quantityWidth: number,
 ): RowLayout {
-  const nameLines = wrap(line.name, bold, size, nameWidth - 24);
-  const eanSize = Math.max(16, Math.min(32, size * 0.8));
+  const imageGap = line.product?.imageUrl ? 10 : 0;
+  const imageSize = line.product?.imageUrl
+    ? Math.min(
+        52 * MM,
+        Math.max(20 * MM, size * 2.2),
+        nameWidth - 24 - imageGap - font.widthOfTextAtSize(line.ean, 16) - 2,
+      )
+    : 0;
+  const textWidth = nameWidth - 24 - imageSize - imageGap;
+  const nameLines = wrap(line.name, bold, size, textWidth);
+  let eanSize = Math.max(16, Math.min(32, size * 0.8));
+  while (eanSize > 16 && font.widthOfTextAtSize(line.ean, eanSize) > textWidth)
+    eanSize = Math.max(16, eanSize - 1);
   let quantitySize = Math.max(36, Math.min(110, size * 2.3));
   while (
     bold.widthOfTextAtSize(String(line.quantity), quantitySize) >
@@ -89,8 +107,18 @@ function measure(
     nameLines.length * size * 1.17 + eanSize * 1.3 + 20,
     quantitySize * 1.15 + 20,
     29 * MM + 12,
+    imageSize + 16,
   );
-  return { line, nameLines, height, nameSize: size, eanSize, quantitySize };
+  return {
+    line,
+    nameLines,
+    height,
+    nameSize: size,
+    eanSize,
+    quantitySize,
+    imageSize,
+    imageGap,
+  };
 }
 export async function fonts() {
   const doc = await PDFDocument.create();
