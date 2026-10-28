@@ -11,7 +11,9 @@ Versjon 2.0 · 28. oktober 2026 · Norsk bokmål
 - **Ny lapp** starter en separat lapp; tidligere lagrede lapper beholdes og kan åpnes igjen.
 - Lappen beholdes frem til utskrift. Brukeren markerer **Markér som skrevet ut**, siden nettleseren ikke kan bekrefte fysisk utskrift. Slettefristen er da sju dager. Etter fristen er lappen utilgjengelig; daglig opprydding sletter lapp og revisjoner fysisk. Gjenåpning for redigering avbryter fristen frem til ny utskriftsbekreftelse.
 - Flere varelinjer gir automatisk flere A3-sider. **Fordel sidene balansert**, for eksempel seks varer på hver side ved tolv vanlige varelinjer, fremfor ti små på første side og to på andre. Mål innholdet, behold varerekkefølgen og bruk færrest mulig sider innenfor lesbarhets- og strekkodekravene.
-- Ledig plass brukes til større tekst, antall og varefelt, også på hver side av en flersidig lapp.
+- Ledig plass brukes til større tekst, antall og varefelt, også på hver side av en flersidig lapp. Ved få produkter skal navnet få bredde og naturlige, lange linjer; ikke bruk kjempestore bokstaver i et smalt tekstfelt. Mål antallskolonnen etter tallet, reduser unødvendig padding og tekstavstand, og behold EAN stort, svart og fett rett under navnet.
+- Manuell sletting bruker papirkurv i inntil sju dager med gjenoppretting av linjer og revisjoner. Utskriftens opprinnelige slettefrist gjelder dersom den kommer først.
+- Mats Leine (`mats.leine@coop.no`) har fått Merkelapp-tilgang i eksisterende Jobbverktøy-konto. Ingen andre apptilganger er endret.
 - ZXing-C++ via `zxing-wasm` er valgt gratis skannermotor. Under testingen hentes varenavn, variant og bilde fra Obs BYGG ved verifisert EAN-treff. Manuell registrering beholdes. Bildet vises ved registrering, i varelisten og i A3-PDF-en. Skannbare koder i produktbilder dekkes i utskriften; utrygge/utgåtte bilder gir en plassholder og beskjed.
 
 

@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       pages: pages.map((p) => ({
         nameWidth: p.nameWidth,
         quantityWidth: p.quantityWidth,
+        barcodeWidth: p.barcodeWidth,
         count: p.rows.length,
         fontSize: p.rows[0]?.nameSize || 18,
         lines: p.rows.map((r) => ({

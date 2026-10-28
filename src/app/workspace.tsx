@@ -41,6 +41,7 @@ type Layout = {
   pages: {
     nameWidth: number;
     quantityWidth: number;
+    barcodeWidth: number;
     count: number;
     fontSize: number;
     lines: {
@@ -122,7 +123,7 @@ export function Workspace() {
     [productChoices, setProductChoices] = useState<Product[]>([]);
   const nameTouched = useRef(false);
   const [pdfState, setPdfState] = useState(""),
-    [filter, setFilter] = useState<"all" | "draft" | "locked">("all");
+    [filter, setFilter] = useState<"all" | "draft" | "locked" | "trash">("all");
   const current = useRef<Sheet | null>(null),
     bodyRef = useRef(draft),
     working = useRef(false),
@@ -136,7 +137,7 @@ export function Workspace() {
     setSheets((list) => [s, ...list.filter((x) => x.id !== s.id)]);
   }
   async function refresh() {
-    const list = await api("/sheets");
+    const list = await api("/sheets?include_deleted=1");
     setSheets(list);
   }
   useEffect(() => {
@@ -168,7 +169,8 @@ export function Workspace() {
     if (
       working.current ||
       !current.current ||
-      current.current.state !== "draft"
+      current.current.state !== "draft" ||
+      Boolean(current.current.deleted_at)
     )
       return false;
     const encoded = JSON.stringify(body);
@@ -278,6 +280,7 @@ export function Workspace() {
       saved.current = JSON.stringify(body);
       setDraft(body);
       setPreview(false);
+      setFilter("all");
       setForm(false);
       setRemoved(null);
       setPdfState("");
@@ -287,11 +290,15 @@ export function Workspace() {
       setBusy(false);
     }
   }
-  async function action(action: "lock" | "reopen" | "printed" | "delete") {
+  async function action(
+    action: "lock" | "reopen" | "printed" | "delete" | "restore",
+  ) {
     if (busy || working.current || !current.current) return;
     if (
       action === "delete" &&
-      !confirm("Slette denne lappen og tilhørende utskrifter?")
+      !confirm(
+        "Flytte lappen til papirkurven? Den kan gjenopprettes i opptil 7 dager.",
+      )
     )
       return;
     if (dirty && !(await persist(bodyRef.current))) return;
@@ -315,13 +322,14 @@ export function Workspace() {
         const id = current.current.id;
         current.current = null;
         setSheet(null);
-        setSheets((s) => s.filter((x) => x.id !== id));
+        setSheets((s) => [data, ...s.filter((x) => x.id !== id)]);
         saved.current = "";
         setDraft(emptyBody());
       } else {
         accept(data);
         setDraft(data.body);
         saved.current = JSON.stringify(data.body);
+        if (action === "restore") setFilter("all");
         if (action === "lock") {
           setPreview(true);
           setPdfState("");
@@ -570,12 +578,15 @@ export function Workspace() {
       setError((e as Error).message);
     }
   }
-  const locked = sheet?.state === "locked",
+  const trashed = Boolean(sheet?.deleted_at);
+  const locked = sheet?.state === "locked" || trashed,
     lineCount = draft.lines.length,
     pageCount = layout?.pages.length;
   const visible = sheets.filter(
     (s) =>
-      (filter === "all" || s.state === filter) &&
+      (filter === "trash"
+        ? Boolean(s.deleted_at)
+        : !s.deleted_at && (filter === "all" || s.state === filter)) &&
       (!query ||
         JSON.stringify([
           s.body.title,
@@ -626,7 +637,8 @@ export function Workspace() {
               <div>
                 <span className="eyebrow">DITT ARBEIDSOMRÅDE</span>
                 <h1>
-                  Mine lapper<span>{sheets.length}</span>
+                  Mine lapper
+                  <span>{sheets.filter((s) => !s.deleted_at).length}</span>
                 </h1>
               </div>
               <button
@@ -651,6 +663,7 @@ export function Workspace() {
                 ["all", "Alle"],
                 ["draft", "Utkast"],
                 ["locked", "Låste"],
+                ["trash", "Papirkurv"],
               ].map(([v, label]) => (
                 <button
                   key={v}
@@ -686,7 +699,11 @@ export function Workspace() {
                       ) : (
                         <span className="dot" />
                       )}
-                      {s.state === "locked" ? "Låst" : "Utkast"}
+                      {s.deleted_at
+                        ? "Papirkurv"
+                        : s.state === "locked"
+                          ? "Låst"
+                          : "Utkast"}
                       {s.delete_after
                         ? " · Slettes " +
                           dateLabel(osloDate(new Date(s.delete_after)))
@@ -785,9 +802,11 @@ export function Workspace() {
                         ) : (
                           <span className="dot" />
                         )}
-                        {locked
-                          ? `Låst · revisjon ${sheet.revision}`
-                          : "Utkast"}
+                        {trashed
+                          ? "I papirkurven"
+                          : locked
+                            ? `Låst · revisjon ${sheet.revision}`
+                            : "Utkast"}
                       </span>
                       <span
                         className={`save-status ${error && dirty ? "failed" : ""}`}
@@ -815,10 +834,10 @@ export function Workspace() {
                   </div>
                   <button
                     className="icon-button delete-sheet"
-                    title="Slett lapp"
+                    title="Flytt til papirkurven"
                     aria-label="Slett lapp"
                     onClick={() => action("delete")}
-                    disabled={busy}
+                    disabled={busy || trashed}
                   >
                     <Trash2 size={18} />
                   </button>
@@ -937,7 +956,7 @@ export function Workspace() {
                             <div
                               className="paper-column-head"
                               style={{
-                                gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${(54 * 72) / 25.4}fr`,
+                                gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${p.barcodeWidth}fr`,
                               }}
                             >
                               <span>VARE / EAN</span>
@@ -955,7 +974,7 @@ export function Workspace() {
                                     key={r.id}
                                     style={{
                                       flex: r.height,
-                                      gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${(54 * 72) / 25.4}fr`,
+                                      gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${p.barcodeWidth}fr`,
                                     }}
                                   >
                                     <div
@@ -1144,7 +1163,25 @@ export function Workspace() {
                   <div className="retention">
                     <CalendarDays size={17} />
                     <p>
-                      {sheet.delete_after ? (
+                      {trashed ? (
+                        <>
+                          Ligger i papirkurven. Gjenopprett innen{" "}
+                          {dateLabel(
+                            osloDate(
+                              new Date(
+                                Math.min(
+                                  new Date(sheet.deleted_at!).getTime() +
+                                    7 * 86400000,
+                                  sheet.delete_after
+                                    ? new Date(sheet.delete_after).getTime()
+                                    : Infinity,
+                                ),
+                              ),
+                            ),
+                          )}
+                          .
+                        </>
+                      ) : sheet.delete_after ? (
                         <>
                           Slettes automatisk{" "}
                           <strong>
@@ -1164,7 +1201,15 @@ export function Workspace() {
                     </p>
                   </div>
                   <div className="footer-actions">
-                    {locked ? (
+                    {trashed ? (
+                      <button
+                        className="button primary"
+                        onClick={() => action("restore")}
+                        disabled={busy}
+                      >
+                        <Undo2 size={17} /> Gjenopprett lapp
+                      </button>
+                    ) : locked ? (
                       <>
                         <button
                           className="button secondary"
@@ -1195,7 +1240,7 @@ export function Workspace() {
                     )}
                   </div>
                 </footer>
-                {locked && (
+                {locked && !trashed && (
                   <div className="print-confirm">
                     <div>
                       <strong>

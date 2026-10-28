@@ -29,7 +29,7 @@ pnpm build
 
 Åpne `http://localhost:3014/merkelapp`. Delt innlogging krever at du åpner gjennom en lokal portal med rewrite til denne adressen, eller logger inn med samme Supabase-prosjekt på samme origin.
 
-Kjør SQL-filene under `supabase/migrations` i rekkefølge i Supabase SQL Editor. De oppretter bare Merkelapps egne tabeller/funksjoner. Begge migreringene er kjørt i portalens prosjekt. Alternativt kan `scripts/db.mjs migrate <fil>` brukes med egen Postgres-tilkobling. Sikkerhetskritiske skrivehandlinger er samlet i `merkelapp_write`, med kontosjekk, validering, radlås, optimistisk versjon og idempotent operasjons-ID.
+Kjør SQL-filene under `supabase/migrations` i rekkefølge i Supabase SQL Editor. De oppretter bare Merkelapps egne tabeller/funksjoner. Alle tre migreringene er kjørt i portalens prosjekt. Alternativt kan `scripts/db.mjs migrate <fil>` brukes med egen Postgres-tilkobling. Sikkerhetskritiske skrivehandlinger er samlet i `merkelapp_write`, med kontosjekk, validering, radlås, optimistisk versjon og idempotent operasjons-ID.
 
 ### Vercel og portal
 
@@ -70,3 +70,13 @@ Bilder hentes fra den låste revisjonens eksisterende bilde-URL, behandles på s
 Layoutberegningen reserverer plass til bildet og måler teksten ved siden av. Forhåndsvisningen bruker samme mål og sidefordeling. Bilder gjør ikke de genererte strekkodene mindre. Ti vanlige varer med bilder er testet på én A3-side, og tolv balanseres fremdeles som seks og seks. Nedlast en ny PDF for å få den oppdaterte utskriftsmalen.
 
 `public/zxing_reader.wasm` inkluderes eksplisitt i PDF-rutens filsporing, slik at avkoderen fungerer på Vercel. Test med `pnpm exec tsx scripts/render-image-fixtures.ts` etter produktoppslagstesten, og `node scripts/check-pdf-images-http.mjs <preview-url>` mot en midlertidig QA-konto.
+
+## Bredere utskrift og papirkurv – 28.10.2026
+
+Navnefeltet bruker nå bredden som blir til overs etter en målt antallskolonne og en kompakt kodekolonne. Små antall får ikke lenger en fast, unødvendig bred kolonne. Ved få varer prioriteres hele navnefraser på to/et fåtall linjer fremfor maksimal skrift med mange korte linjer. EAN står i svart, fet skrift rett under varenavnet. Radpadding og tekstavstander er redusert, mens strekkodens modulbredde, høyde og friplass beholdes.
+
+Manuell sletting flytter lappen til **Papirkurv** i inntil sju dager. Brukeren kan åpne den der og velge **Gjenopprett lapp**. Varelinjer og låste revisjoner beholdes. Papirkurven er privat per konto, og lapper der kan ikke redigeres eller skrives ut før gjenoppretting. Den opprinnelige slettefristen etter utskrift beholdes dersom den kommer tidligere.
+
+Slettinger før migreringen `202610280003_recoverable_delete.sql` var permanente og kan ikke gjenopprettes gjennom den nye papirkurven. Ingen eksisterende slettede data blir gjenskapt av migreringen. Daglig opprydding fjerner utløpte lapper og papirkurvinnhold fysisk.
+
+Standard `GET /api/sheets` gir bare aktive lapper, slik at eldre klienter virker videre. `?include_deleted=1` inkluderer eierens tilgjengelige papirkurv. RPC/API-handlingen `restore` gjenoppretter lappen uten å endre innhold, telledato eller revisjonsnummer.

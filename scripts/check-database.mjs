@@ -169,6 +169,68 @@ try {
     p_body: { ...body, lines: [{ ...line, ean: "1234567890123" }] },
   });
   assert.ok(bad.error.message.includes("invalid_body"));
+  const originalBody = reopen.data.body;
+  const trashed = await a.rpc("merkelapp_write", {
+    p_id: id,
+    p_version: 5,
+    p_operation: crypto.randomUUID(),
+    p_action: "delete",
+  });
+  if (trashed.error) throw trashed.error;
+  assert.ok(trashed.data.deleted_at);
+  assert.deepEqual(trashed.data.body, originalBody);
+  assert.equal(
+    (await a.from("merkelapp_revisions").select("*").eq("sheet_id", id)).data
+      .length,
+    1,
+  );
+  const editTrashed = await a.rpc("merkelapp_write", {
+    p_id: id,
+    p_version: 6,
+    p_operation: crypto.randomUUID(),
+    p_action: "save",
+    p_body: body,
+  });
+  assert.ok(editTrashed.error.message.includes("sheet_deleted"));
+  assert.ok(
+    (
+      await b.rpc("merkelapp_write", {
+        p_id: id,
+        p_version: 6,
+        p_operation: crypto.randomUUID(),
+        p_action: "restore",
+      })
+    ).error,
+  );
+  const restored = await a.rpc("merkelapp_write", {
+    p_id: id,
+    p_version: 6,
+    p_operation: crypto.randomUUID(),
+    p_action: "restore",
+  });
+  if (restored.error) throw restored.error;
+  assert.equal(restored.data.deleted_at, null);
+  assert.deepEqual(restored.data.body, originalBody);
+  assert.equal(restored.data.revision, 1);
+  const expired = await admin
+    .from("merkelapp_sheets")
+    .update({ deleted_at: new Date(Date.now() - 8 * 86400000).toISOString() })
+    .eq("id", id);
+  if (expired.error) throw expired.error;
+  assert.equal(
+    (await a.from("merkelapp_sheets").select("*").eq("id", id)).data.length,
+    0,
+  );
+  const tooLate = await a.rpc("merkelapp_write", {
+    p_id: id,
+    p_version: 7,
+    p_operation: crypto.randomUUID(),
+    p_action: "restore",
+  });
+  assert.ok(tooLate.error.message.includes("not_found"));
+  console.log(
+    "PASS: trash retains body and revisions, blocks editing and other users, restores exact content, and expires after seven days",
+  );
   console.log(
     "PASS: server persistence, account isolation, idempotent create, conflict detection, direct-write protection, lock, immutable snapshot, print expiry, reopen, EAN validation",
   );

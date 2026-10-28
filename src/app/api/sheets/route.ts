@@ -1,12 +1,13 @@
 import { requireUser, failure, checkOrigin, ApiError } from "@/lib/supabase";
 import { bodySchema } from "@/lib/model";
 import { z } from "zod";
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { db } = await requireUser();
-    const { data, error } = await db
-      .from("merkelapp_sheets")
-      .select("*")
+    let query = db.from("merkelapp_sheets").select("*");
+    if (new URL(request.url).searchParams.get("include_deleted") !== "1")
+      query = query.is("deleted_at", null);
+    const { data, error } = await query
       .order("updated_at", { ascending: false })
       .limit(200);
     if (error) throw error;

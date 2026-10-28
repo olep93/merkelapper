@@ -29,7 +29,14 @@ export async function PATCH(
     const { id } = await params;
     const parsed = z
       .object({
-        action: z.enum(["save", "lock", "reopen", "printed", "delete"]),
+        action: z.enum([
+          "save",
+          "lock",
+          "reopen",
+          "printed",
+          "delete",
+          "restore",
+        ]),
         version: z.number().int().min(1),
         operation: z.uuid(),
         body: bodySchema.optional(),
@@ -53,6 +60,11 @@ export async function PATCH(
         );
       if (error.message.includes("not_found"))
         throw new ApiError("Fant ikke lappen.", 404);
+      if (error.message.includes("sheet_deleted"))
+        throw new ApiError(
+          "Lappen ligger i papirkurven. Gjenopprett den først.",
+          409,
+        );
       if (error.message.includes("sheet_locked"))
         throw new ApiError(
           "Lappen er låst. Åpne den for redigering først.",

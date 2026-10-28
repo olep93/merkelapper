@@ -11,10 +11,14 @@ export async function GET(
     const { id } = await params;
     const { data: sheet } = await db
       .from("merkelapp_sheets")
-      .select("id,state,revision")
+      .select("id,state,revision,deleted_at")
       .eq("id", id)
       .single();
-    if (!sheet) throw new ApiError("Fant ikke lappen.", 404);
+    if (!sheet || sheet.deleted_at)
+      throw new ApiError(
+        "Fant ikke en aktiv lapp. Gjenopprett den fra papirkurven først.",
+        404,
+      );
     if (sheet.state !== "locked")
       throw new ApiError("Lås lappen før du åpner utskriften.", 409);
     const { data: revision } = await db

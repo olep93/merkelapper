@@ -39,7 +39,7 @@ test("photographs reserve real space without shrinking barcodes; 12 lines balanc
       );
     for (const row of p.flatMap((x) => x.rows)) {
       assert.ok(row.imageSize > 0);
-      assert.ok(row.height >= row.imageSize + 16);
+      assert.ok(row.height >= row.imageSize + 12);
       assert.ok(row.nameSize >= 18);
       assert.ok(row.eanSize >= 16);
       assert.ok(row.quantitySize >= 36);
@@ -78,7 +78,11 @@ test("PDF embeds a real photo and reports unavailable photos without blocking th
     .getPages()[0]
     .node.Resources()
     ?.lookup(PDFName.of("XObject"), PDFDict);
-  assert.equal(xobjects?.keys().length, 1, "the page must draw the embedded image");
+  assert.equal(
+    xobjects?.keys().length,
+    1,
+    "the page must draw the embedded image",
+  );
   assert.ok(Buffer.from(rendered.bytes).length > bytes.length);
   const fallback = await makePdf(body, crypto.randomUUID(), 1, {
     imageLoader: async () => new Map(),

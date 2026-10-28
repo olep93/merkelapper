@@ -7,7 +7,8 @@ export const PAGE_W = 297 * MM,
 export const CONTENT_TOP = PAGE_H - MARGIN - 86,
   CONTENT_BOTTOM = MARGIN + 26;
 export const ROW_SPACE = CONTENT_TOP - CONTENT_BOTTOM;
-export const NAME_WIDTH = 151 * MM;
+export const BARCODE_COLUMN_WIDTH = 43 * MM;
+export const MIN_ROW_HEIGHT = 29 * MM + 8;
 export type RowLayout = {
   line: Line;
   nameLines: string[];
@@ -15,6 +16,11 @@ export type RowLayout = {
   nameSize: number;
   eanSize: number;
   quantitySize: number;
+  nameLineHeight: number;
+  textHeight: number;
+  nameAscent: number;
+  nameDescent: number;
+  eanAscent: number;
   imageSize: number;
   imageGap: number;
 };
@@ -22,6 +28,7 @@ export type PageLayout = {
   rows: RowLayout[];
   nameWidth: number;
   quantityWidth: number;
+  barcodeWidth: number;
 };
 export function printable(text: string, font: PDFFont) {
   return [
@@ -83,31 +90,40 @@ function measure(
   nameWidth: number,
   quantityWidth: number,
 ): RowLayout {
-  const imageGap = line.product?.imageUrl ? 10 : 0;
+  const imageGap = line.product?.imageUrl ? 6 : 0;
   const imageSize = line.product?.imageUrl
     ? Math.min(
-        52 * MM,
-        Math.max(20 * MM, size * 2.2),
-        nameWidth - 24 - imageGap - font.widthOfTextAtSize(line.ean, 16) - 2,
+        32 * MM,
+        Math.max(16 * MM, size * 1.3),
+        nameWidth - 12 - imageGap - bold.widthOfTextAtSize(line.ean, 18) - 2,
       )
     : 0;
-  const textWidth = nameWidth - 24 - imageSize - imageGap;
+  const textWidth = nameWidth - 12 - imageSize - imageGap;
   const nameLines = wrap(line.name, bold, size, textWidth);
-  let eanSize = Math.max(16, Math.min(32, size * 0.8));
-  while (eanSize > 16 && font.widthOfTextAtSize(line.ean, eanSize) > textWidth)
-    eanSize = Math.max(16, eanSize - 1);
-  let quantitySize = Math.max(36, Math.min(110, size * 2.3));
+  let eanSize = Math.max(18, Math.min(34, size * 0.8));
+  while (eanSize > 18 && bold.widthOfTextAtSize(line.ean, eanSize) > textWidth)
+    eanSize = Math.max(18, eanSize - 1);
+  let quantitySize = Math.max(36, Math.min(96, size * 2.3));
   while (
     bold.widthOfTextAtSize(String(line.quantity), quantitySize) >
-      quantityWidth - 24 + 0.001 &&
+      quantityWidth - 12 + 0.001 &&
     quantitySize > 36
   )
     quantitySize = Math.max(36, quantitySize - 1);
+  const nameLineHeight = size * 1.12;
+  const nameAscent = bold.heightAtSize(size, { descender: false });
+  const nameDescent = bold.heightAtSize(size) - nameAscent;
+  const eanAscent = bold.heightAtSize(eanSize, { descender: false });
+  const textHeight =
+    bold.heightAtSize(size) +
+    (nameLines.length - 1) * nameLineHeight +
+    5 +
+    bold.heightAtSize(eanSize);
   const height = Math.max(
-    nameLines.length * size * 1.17 + eanSize * 1.3 + 20,
-    quantitySize * 1.15 + 20,
-    29 * MM + 12,
-    imageSize + 16,
+    textHeight + 12,
+    quantitySize * 1.15 + 12,
+    MIN_ROW_HEIGHT,
+    imageSize + 12,
   );
   return {
     line,
@@ -116,6 +132,11 @@ function measure(
     nameSize: size,
     eanSize,
     quantitySize,
+    nameLineHeight,
+    textHeight,
+    nameAscent,
+    nameDescent,
+    eanAscent,
     imageSize,
     imageGap,
   };
@@ -134,11 +155,22 @@ export function planPages(
   bold: PDFFont,
 ): PageLayout[] {
   if (!lines.length) return [];
-  const quantityWidth = Math.max(
-    72 * MM,
-    ...lines.map((l) => bold.widthOfTextAtSize(String(l.quantity), 36) + 24),
+  const profile = Math.min(
+    72,
+    Math.round(100 / Math.sqrt(Math.min(lines.length, 10))),
   );
-  const nameWidth = PAGE_W - 2 * MARGIN - 54 * MM - quantityWidth;
+  const desiredQuantitySize = Math.max(36, Math.min(96, profile * 2.3));
+  const quantityWidth = Math.max(
+    28 * MM,
+    ...lines.map((l) =>
+      Math.min(
+        72 * MM,
+        bold.widthOfTextAtSize(String(l.quantity), desiredQuantitySize) + 12,
+      ),
+    ),
+    ...lines.map((l) => bold.widthOfTextAtSize(String(l.quantity), 36) + 12),
+  );
+  const nameWidth = PAGE_W - 2 * MARGIN - BARCODE_COLUMN_WIDTH - quantityWidth;
   const minimum = lines.map((l) =>
     measure(l, font, bold, 18, nameWidth, quantityWidth),
   );
@@ -193,6 +225,7 @@ export function planPages(
     let rows = group.map((l) =>
       measure(l, font, bold, 18, nameWidth, quantityWidth),
     );
+    let bestExcess = Infinity;
     for (
       let size = Math.min(72, Math.round(100 / Math.sqrt(group.length)));
       size >= 18;
@@ -201,15 +234,32 @@ export function planPages(
       const candidate = group.map((l) =>
         measure(l, font, bold, size, nameWidth, quantityWidth),
       );
-      if (candidate.reduce((n, r) => n + r.height, 0) <= ROW_SPACE) {
+      if (candidate.reduce((n, r) => n + r.height, 0) > ROW_SPACE) continue;
+      // With a few products, favour useful horizontal phrases over giant letters in a narrow stack.
+      const excess =
+        group.length <= 3
+          ? candidate.reduce(
+              (n, r) =>
+                n +
+                Math.max(
+                  0,
+                  r.nameLines.length -
+                    Math.max(2, Math.ceil(r.line.name.length / 48)),
+                ),
+              0,
+            )
+          : 0;
+      if (excess < bestExcess) {
         rows = candidate;
-        break;
+        bestExcess = excess;
       }
+      if (excess === 0) break;
     }
     const spare = ROW_SPACE - rows.reduce((n, r) => n + r.height, 0);
     return {
       nameWidth,
       quantityWidth,
+      barcodeWidth: BARCODE_COLUMN_WIDTH,
       rows: rows.map((r) => ({ ...r, height: r.height + spare / rows.length })),
     };
   });

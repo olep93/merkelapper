@@ -12,7 +12,9 @@ export async function GET(request: Request) {
   const { data, error } = await adminClient()
     .from("merkelapp_sheets")
     .delete()
-    .lte("delete_after", new Date().toISOString())
+    .or(
+      `delete_after.lte.${new Date().toISOString()},deleted_at.lte.${new Date(Date.now() - 7 * 86400000).toISOString()}`,
+    )
     .select("id");
   return Response.json(
     error ? { error: "Cleanup failed" } : { deleted: data?.length || 0 },

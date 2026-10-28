@@ -144,21 +144,21 @@ export async function makePdf(
       page.drawLine({
         start: { x: MARGIN, y: bottom },
         end: { x: PAGE_W - MARGIN, y: bottom },
-        thickness: 0.7,
+        thickness: 0.5,
         color: lineColor,
       });
       for (const x of [qtyX, barcodeX])
         page.drawLine({
           start: { x, y },
           end: { x, y: bottom },
-          thickness: 0.5,
+          thickness: 0.35,
           color: lineColor,
         });
       const imageUrl = r.line.product?.imageUrl;
       const preparedImage = imageUrl ? prepared.get(imageUrl) : undefined;
       if (r.imageSize && imageUrl) {
         const image = embedded.get(imageUrl),
-          boxX = MARGIN + 10,
+          boxX = MARGIN + 6,
           boxY = mid - r.imageSize / 2;
         if (image && preparedImage) {
           const scale = Math.min(
@@ -197,10 +197,8 @@ export async function makePdf(
           });
         }
       }
-      const textX = MARGIN + 10 + r.imageSize + r.imageGap;
-      const textHeight =
-        r.nameLines.length * r.nameSize * 1.17 + r.eanSize * 1.3;
-      let ty = mid + textHeight / 2 - r.nameSize;
+      const textX = MARGIN + 6 + r.imageSize + r.imageGap;
+      let ty = mid + r.textHeight / 2 - r.nameAscent;
       for (const name of r.nameLines) {
         page.drawText(name, {
           x: textX,
@@ -208,14 +206,14 @@ export async function makePdf(
           size: r.nameSize,
           font: bold,
         });
-        ty -= r.nameSize * 1.17;
+        ty -= r.nameLineHeight;
       }
       page.drawText(r.line.ean, {
         x: textX,
-        y: ty - 5,
+        y: ty + r.nameLineHeight - r.nameDescent - 5 - r.eanAscent,
         size: r.eanSize,
-        font,
-        color: gray,
+        font: bold,
+        color: black,
       });
       const q = String(r.line.quantity);
       page.drawText(q, {
@@ -232,9 +230,9 @@ export async function makePdf(
         quiet = r.line.ean.length === 13 ? 11 : 7;
       const total = (bits.length + quiet + 7) * xDim;
       const fieldWidth = PAGE_W - MARGIN - barcodeX;
-      const bx = barcodeX + (fieldWidth - total) / 2 + quiet * xDim,
-        by = mid - (27 * MM) / 2 + 9;
       const barHeight = 22.85 * MM;
+      const bx = barcodeX + (fieldWidth - total) / 2 + quiet * xDim,
+        by = mid - (barHeight - 18) / 2;
       for (let i = 0; i < bits.length; i++)
         if (bits[i] === "1") {
           const guard =

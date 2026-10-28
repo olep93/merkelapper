@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fonts, planPages, ROW_SPACE, MM } from "../src/lib/layout";
+import {
+  fonts,
+  planPages,
+  ROW_SPACE,
+  MM,
+  MIN_ROW_HEIGHT,
+} from "../src/lib/layout";
 import { validEan, bodySchema, type Line } from "../src/lib/model";
 import { makePdf, eanBits } from "../src/lib/pdf";
 import { PDFDocument } from "pdf-lib";
@@ -90,7 +96,7 @@ test("long names get more room and no split rows", async () => {
       assert.ok(r.nameSize >= 18);
       assert.ok(r.quantitySize >= 36);
       assert.ok(r.eanSize >= 16);
-      assert.ok(r.height >= 29 * MM + 12);
+      assert.ok(r.height >= MIN_ROW_HEIGHT);
     }
 });
 test("EAN symbols have exact module counts", () => {
@@ -122,7 +128,34 @@ test("large safe quantities widen the quantity field without clipping or tiny te
       assert.ok(r.quantitySize >= 36);
       assert.ok(
         bold.widthOfTextAtSize(String(r.line.quantity), r.quantitySize) <=
-          p.quantityWidth - 24,
+          p.quantityWidth - 12 + 0.001,
       );
     }
+});
+
+test("few products keep whole name phrases on wide lines with prominent EAN", async () => {
+  const { font, bold } = await fonts();
+  const name = "Clean Flame Bjørkeved 15 kg/40l";
+  const line: Line = {
+    id: crypto.randomUUID(),
+    ean: "7071284510113",
+    name,
+    quantity: 1,
+    product: {
+      ean: "7071284510113",
+      name,
+      source: "Obs BYGG",
+      sourceUrl: "https://www.obsbygg.no/verktoy/1234567",
+      imageUrl: "https://www.obsbygg.no/globalassets/productimages/test.jpg",
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+  const [page] = planPages([line], font, bold),
+    row = page.rows[0];
+  assert.ok(page.nameWidth >= 190 * MM);
+  assert.ok(page.quantityWidth < 72 * MM);
+  assert.ok(page.barcodeWidth >= 37.29 * MM);
+  assert.ok(row.nameLines.length <= 2);
+  assert.equal(row.nameLines.join(" "), name);
+  assert.ok(row.eanSize >= 28);
 });

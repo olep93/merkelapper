@@ -86,6 +86,7 @@ export type Sheet = {
   updated_at: string;
   printed_at: string | null;
   delete_after: string | null;
+  deleted_at: string | null;
 };
 export function osloDate(date: Date = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(

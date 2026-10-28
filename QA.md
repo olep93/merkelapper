@@ -52,3 +52,10 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 
 - Verifisert på Vercel-preview: ti bildeobjekter er faktisk tegnet på én A3-side, ingen manglende bilder, omtrent 386 kB PDF. Første servergenerering i denne testen tok cirka 4,6 sekunder, inkludert bildebehandlingen.
 - Kontrollert gjennom jobbverktoy.no etter publisering: alle ti produktbilder er innebygd, ingen bildeutfall, og portalens rutekontroll passerer for alle verktøy.
+
+## Bredde, EAN og gjenopprettbar sletting
+
+- Eksemplet med én vare får hele navnet på to linjer og stor, svart EAN under. Navnefeltet er større, mens antallskolonnen måles etter innhold og kodekolonnen er 43 mm bred med uendrede strekkodemål.
+- Ti varer med bilder er rendret visuelt og avkodet ved 200 dpi; alle ti EAN-er blir lest i riktig rekkefølge. Bildets konkurrerende kode er fremdeles skjult.
+- Database- og preview-HTTP-tester bekrefter at papirkurv skjules fra aktiv liste, beholder ni varelinjer og den låste revisjonen, blokkerer redigering/utskrift og andre kontoer, og gjenoppretter identisk innhold. Utløpt papirkurv blir utilgjengelig og ryddes fysisk.
+- Den tidligere slettede ni-varers lappen ble ikke gjenopprettet: den siste tilgjengelige daglige sikkerhetskopien var fra før opprettelsen, tidspunktbasert gjenoppretting var ikke aktivert, og brukeren hadde ikke PDF-en. Det ble ikke utført tilbakeføring av databasen.
