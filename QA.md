@@ -66,3 +66,10 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Navn skaleres individuelt. Forhåndsvisningen beholder de beregnede linjene uten ny bokstavbryting i nettleseren.
 - Rendret og visuelt kontrollert A3-PDF med henholdsvis én, to og tre testvarer: navn på to–tre linjer og stor EAN rett under. Testnavn/bilder er illustrasjonsdata.
 - Alle 20 automatiske tester og TypeScript-kontrollen bestått.
+
+## Samlet vurdering av bilde, tekst og kolonner
+
+- Ved 1–3 varer står bildet over teksten og vokser etter tilgjengelig radhøyde, opptil 90 mm. Navnet får hele varekolonnens bredde, med maksimalt 48 punkter; EAN står sentrert under i 34 punkter. Antall er dempet til maksimalt 80 punkter.
+- Kolonneoverskriftene er sentrert over innholdet og økt fra 11 til 14 punkter. EAN er også sentrert i tekstfeltet på tettere ark.
+- Visuelt kontrollert rendret PDF med 1, 2, 3 og 10 faktiske Obs BYGG-produkter (testantall). Ingen avkuttede navn, bilder eller EAN; bildene bruker ledig høyde uten å presse teksten sammen.
+- 21 automatiske tester og TypeScript-kontroll bestått; ny test kontrollerer bildestørrelse og samlet plass for bilde, navn og EAN.

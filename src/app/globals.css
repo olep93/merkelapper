@@ -1821,3 +1821,24 @@ input:disabled {
 .paper-product-text > span {
   white-space: nowrap;
 }
+
+.paper-column-head {
+  font-size: 1.78cqw;
+  min-height: 2.93cqw;
+  text-align: center;
+}
+.paper-column-head span {
+  padding: 0;
+}
+.paper-product-text > span {
+  text-align: center;
+}
+.paper-product-stacked {
+  flex-direction: column;
+  justify-content: center;
+}
+.paper-product-stacked .paper-product-text {
+  flex: 0 0 auto;
+  width: 100%;
+  text-align: center;
+}

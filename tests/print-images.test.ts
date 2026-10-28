@@ -90,3 +90,21 @@ test("PDF embeds a real photo and reports unavailable photos without blocking th
   assert.equal(fallback.missingImages, 1);
   assert.equal((await PDFDocument.load(fallback.bytes)).getPageCount(), 1);
 });
+
+test("sparse sheets give photos real height while preserving name and EAN space", async () => {
+  const { font, bold } = await fonts();
+  for (const n of [1, 2, 3]) {
+    const [page] = planPages(Array.from({ length: n }, line), font, bold);
+    for (const row of page.rows) {
+      assert.equal(row.stacked, true);
+      assert.ok(row.imageSize >= (45 * 72) / 25.4);
+      assert.ok(
+        row.imageSize + row.imageGap + row.textHeight + 12 <=
+          row.height + 0.001,
+      );
+      assert.equal(row.eanSize, 34);
+      assert.ok(row.nameSize <= 48);
+      assert.ok(row.nameLines.length <= 2);
+    }
+  }
+});

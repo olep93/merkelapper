@@ -23,6 +23,7 @@ export async function POST(request: Request) {
           eanSize: r.eanSize,
           quantitySize: r.quantitySize,
           height: r.height,
+          stacked: r.stacked,
           imageSize: r.imageSize,
           imageGap: r.imageGap,
         })),

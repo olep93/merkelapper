@@ -131,12 +131,18 @@ export async function makePdf(
       height: 23,
       color: rgb(1, 0.83, 0.25),
     });
-    for (const [label, x] of [
-      ["VARE / EAN", MARGIN + 10],
-      ["ANTALL", qtyX + 10],
-      ["SKANN VARE", barcodeX + 8],
+    const headerSize = 14;
+    for (const [label, x, width] of [
+      ["VARE / EAN", MARGIN, layout.nameWidth],
+      ["ANTALL", qtyX, layout.quantityWidth],
+      ["SKANN VARE", barcodeX, layout.barcodeWidth],
     ] as const)
-      page.drawText(label, { x, y: CONTENT_TOP + 7, size: 11, font: bold });
+      page.drawText(label, {
+        x: x + (width - bold.widthOfTextAtSize(label, headerSize)) / 2,
+        y: CONTENT_TOP + 6,
+        size: headerSize,
+        font: bold,
+      });
     let y = CONTENT_TOP;
     for (const r of layout.rows) {
       const bottom = y - r.height,
@@ -154,12 +160,19 @@ export async function makePdf(
           thickness: 0.35,
           color: lineColor,
         });
+      const blockHeight =
+        r.textHeight +
+        (r.stacked && r.imageSize ? r.imageSize + r.imageGap : 0);
+      const blockTop = mid + blockHeight / 2;
+      const imageMid = r.stacked ? blockTop - r.imageSize / 2 : mid;
       const imageUrl = r.line.product?.imageUrl;
       const preparedImage = imageUrl ? prepared.get(imageUrl) : undefined;
       if (r.imageSize && imageUrl) {
         const image = embedded.get(imageUrl),
-          boxX = MARGIN + 6,
-          boxY = mid - r.imageSize / 2;
+          boxX = r.stacked
+            ? MARGIN + (layout.nameWidth - r.imageSize) / 2
+            : MARGIN + 6,
+          boxY = imageMid - r.imageSize / 2;
         if (image && preparedImage) {
           const scale = Math.min(
             r.imageSize / preparedImage.width,
@@ -168,7 +181,7 @@ export async function makePdf(
           const width = preparedImage.width * scale,
             height = preparedImage.height * scale;
           const ix = boxX + (r.imageSize - width) / 2,
-            iy = mid - height / 2;
+            iy = imageMid - height / 2;
           page.drawImage(image, { x: ix, y: iy, width, height });
           for (const mask of preparedImage.masks)
             page.drawRectangle({
@@ -190,18 +203,27 @@ export async function makePdf(
           const label = "Bilde mangler";
           page.drawText(label, {
             x: boxX + (r.imageSize - font.widthOfTextAtSize(label, 7)) / 2,
-            y: mid - 2,
+            y: imageMid - 2,
             size: 7,
             font,
             color: gray,
           });
         }
       }
-      const textX = MARGIN + 6 + r.imageSize + r.imageGap;
-      let ty = mid + r.textHeight / 2 - r.nameAscent;
+      const textX = MARGIN + 6 + (r.stacked ? 0 : r.imageSize + r.imageGap);
+      const textWidth =
+        layout.nameWidth - 12 - (r.stacked ? 0 : r.imageSize + r.imageGap);
+      let ty =
+        (r.stacked
+          ? blockTop - (r.imageSize ? r.imageSize + r.imageGap : 0)
+          : mid + r.textHeight / 2) - r.nameAscent;
       for (const name of r.nameLines) {
         page.drawText(name, {
-          x: textX,
+          x:
+            textX +
+            (r.stacked
+              ? (textWidth - bold.widthOfTextAtSize(name, r.nameSize)) / 2
+              : 0),
           y: ty,
           size: r.nameSize,
           font: bold,
@@ -209,7 +231,9 @@ export async function makePdf(
         ty -= r.nameLineHeight;
       }
       page.drawText(r.line.ean, {
-        x: textX,
+        x:
+          textX +
+          (textWidth - bold.widthOfTextAtSize(r.line.ean, r.eanSize)) / 2,
         y: ty + r.nameLineHeight - r.nameDescent - 5 - r.eanAscent,
         size: r.eanSize,
         font: bold,

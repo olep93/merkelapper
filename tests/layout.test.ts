@@ -195,7 +195,8 @@ test("one to three products preserve whole words and a large unbroken EAN", asyn
         );
         assert.equal(r.nameLines.join(" "), r.line.name);
         assert.equal(r.eanSize, 34);
-        const textWidth = page.nameWidth - 12 - r.imageSize - r.imageGap;
+        const textWidth =
+          page.nameWidth - 12 - (r.stacked ? 0 : r.imageSize + r.imageGap);
         assert.ok(bold.widthOfTextAtSize(r.line.ean, r.eanSize) <= textWidth);
         assert.ok(r.textHeight + 12 <= r.height);
         for (const text of r.nameLines)

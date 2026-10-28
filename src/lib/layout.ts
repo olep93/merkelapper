@@ -21,6 +21,7 @@ export type RowLayout = {
   nameAscent: number;
   nameDescent: number;
   eanAscent: number;
+  stacked: boolean;
   imageSize: number;
   imageGap: number;
 };
@@ -90,21 +91,26 @@ function measure(
   nameWidth: number,
   quantityWidth: number,
   prominentEan = false,
+  rowBudget = ROW_SPACE,
 ): RowLayout {
-  const imageGap = line.product?.imageUrl ? 6 : 0;
-  const imageSize = line.product?.imageUrl
+  const stacked = prominentEan;
+  const imageGap = line.product?.imageUrl ? (stacked ? 12 : 6) : 0;
+  let imageSize = line.product?.imageUrl
     ? Math.min(
         32 * MM,
         Math.max(16 * MM, size * 1.3),
         nameWidth - 12 - imageGap - bold.widthOfTextAtSize(line.ean, 18) - 2,
       )
     : 0;
-  const textWidth = nameWidth - 12 - imageSize - imageGap;
+  const textWidth = nameWidth - 12 - (stacked ? 0 : imageSize + imageGap);
   const nameLines = wrap(line.name, bold, size, textWidth);
   let eanSize = prominentEan ? 34 : Math.max(18, Math.min(34, size * 0.8));
   while (eanSize > 18 && bold.widthOfTextAtSize(line.ean, eanSize) > textWidth)
     eanSize = Math.max(18, eanSize - 1);
-  let quantitySize = Math.max(36, Math.min(96, size * 2.3));
+  let quantitySize = Math.max(
+    36,
+    Math.min(prominentEan ? 80 : 96, size * (prominentEan ? 1.6 : 2.3)),
+  );
   while (
     bold.widthOfTextAtSize(String(line.quantity), quantitySize) >
       quantityWidth - 12 + 0.001 &&
@@ -120,8 +126,17 @@ function measure(
     (nameLines.length - 1) * nameLineHeight +
     5 +
     bold.heightAtSize(eanSize);
+  if (stacked && imageSize)
+    imageSize = Math.max(
+      0,
+      Math.min(
+        90 * MM,
+        rowBudget * 0.5,
+        rowBudget - textHeight - imageGap - 36,
+      ),
+    );
   const height = Math.max(
-    textHeight + 12,
+    textHeight + 12 + (stacked ? imageSize + imageGap : 0),
     quantitySize * 1.15 + 12,
     MIN_ROW_HEIGHT,
     imageSize + 12,
@@ -138,6 +153,7 @@ function measure(
     nameAscent,
     nameDescent,
     eanAscent,
+    stacked,
     imageSize,
     imageGap,
   };
@@ -160,7 +176,10 @@ export function planPages(
     72,
     Math.round(100 / Math.sqrt(Math.min(lines.length, 10))),
   );
-  const desiredQuantitySize = Math.max(36, Math.min(96, profile * 2.3));
+  const desiredQuantitySize = Math.max(
+    36,
+    Math.min(lines.length <= 3 ? 80 : 96, profile * 2.3),
+  );
   const quantityWidth = Math.max(
     28 * MM,
     ...lines.map((l) =>
@@ -241,8 +260,9 @@ export function planPages(
           nameWidth,
           quantityWidth,
           true,
+          ROW_SPACE / group.length,
         );
-        for (let size = 72; size >= 18; size--) {
+        for (let size = 48; size >= 18; size--) {
           const candidate = measure(
             line,
             font,
@@ -251,9 +271,12 @@ export function planPages(
             nameWidth,
             quantityWidth,
             true,
+            ROW_SPACE / group.length,
           );
           const textWidth =
-            nameWidth - 12 - candidate.imageSize - candidate.imageGap;
+            nameWidth -
+            12 -
+            (candidate.stacked ? 0 : candidate.imageSize + candidate.imageGap);
           const wholeWords = printable(line.name, bold)
             .split(/\s+/)
             .every((word) => bold.widthOfTextAtSize(word, size) <= textWidth);

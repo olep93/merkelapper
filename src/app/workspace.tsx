@@ -51,6 +51,7 @@ type Layout = {
       eanSize: number;
       quantitySize: number;
       height: number;
+      stacked: boolean;
       imageSize: number;
       imageGap: number;
     }[];
@@ -978,7 +979,7 @@ export function Workspace() {
                                     }}
                                   >
                                     <div
-                                      className="paper-product"
+                                      className={`paper-product ${r.stacked ? "paper-product-stacked" : ""}`}
                                       style={{
                                         gap: `${(r.imageGap * 100) / ((277 * 72) / 25.4)}cqw`,
                                       }}
