@@ -59,3 +59,10 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Ti varer med bilder er rendret visuelt og avkodet ved 200 dpi; alle ti EAN-er blir lest i riktig rekkefølge. Bildets konkurrerende kode er fremdeles skjult.
 - Database- og preview-HTTP-tester bekrefter at papirkurv skjules fra aktiv liste, beholder ni varelinjer og den låste revisjonen, blokkerer redigering/utskrift og andre kontoer, og gjenoppretter identisk innhold. Utløpt papirkurv blir utilgjengelig og ryddes fysisk.
 - Den tidligere slettede ni-varers lappen ble ikke gjenopprettet: den siste tilgjengelige daglige sikkerhetskopien var fra før opprettelsen, tidspunktbasert gjenoppretting var ikke aktivert, og brukeren hadde ikke PDF-en. Det ble ikke utført tilbakeføring av databasen.
+
+## Størrelseskontroll for 1–3 varer
+
+- Testet korte og lange navn med/uten bilder, kontrollert hele ord, tekstbredde, radgrenser og at hele EAN får plass i 34 punkter.
+- Navn skaleres individuelt. Forhåndsvisningen beholder de beregnede linjene uten ny bokstavbryting i nettleseren.
+- Rendret og visuelt kontrollert A3-PDF med henholdsvis én, to og tre testvarer: navn på to–tre linjer og stor EAN rett under. Testnavn/bilder er illustrasjonsdata.
+- Alle 20 automatiske tester og TypeScript-kontrollen bestått.

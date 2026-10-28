@@ -89,6 +89,7 @@ function measure(
   size: number,
   nameWidth: number,
   quantityWidth: number,
+  prominentEan = false,
 ): RowLayout {
   const imageGap = line.product?.imageUrl ? 6 : 0;
   const imageSize = line.product?.imageUrl
@@ -100,7 +101,7 @@ function measure(
     : 0;
   const textWidth = nameWidth - 12 - imageSize - imageGap;
   const nameLines = wrap(line.name, bold, size, textWidth);
-  let eanSize = Math.max(18, Math.min(34, size * 0.8));
+  let eanSize = prominentEan ? 34 : Math.max(18, Math.min(34, size * 0.8));
   while (eanSize > 18 && bold.widthOfTextAtSize(line.ean, eanSize) > textWidth)
     eanSize = Math.max(18, eanSize - 1);
   let quantitySize = Math.max(36, Math.min(96, size * 2.3));
@@ -225,35 +226,58 @@ export function planPages(
     let rows = group.map((l) =>
       measure(l, font, bold, 18, nameWidth, quantityWidth),
     );
-    let bestExcess = Infinity;
-    for (
-      let size = Math.min(72, Math.round(100 / Math.sqrt(group.length)));
-      size >= 18;
-      size--
-    ) {
-      const candidate = group.map((l) =>
-        measure(l, font, bold, size, nameWidth, quantityWidth),
-      );
-      if (candidate.reduce((n, r) => n + r.height, 0) > ROW_SPACE) continue;
-      // With a few products, favour useful horizontal phrases over giant letters in a narrow stack.
-      const excess =
-        group.length <= 3
-          ? candidate.reduce(
-              (n, r) =>
-                n +
-                Math.max(
-                  0,
-                  r.nameLines.length -
-                    Math.max(2, Math.ceil(r.line.name.length / 48)),
-                ),
-              0,
-            )
-          : 0;
-      if (excess < bestExcess) {
-        rows = candidate;
-        bestExcess = excess;
+    if (group.length <= 3) {
+      // Fit each name independently: a long name must not shrink the other products.
+      rows = group.map((line) => {
+        const lineLimit = Math.min(
+          4,
+          Math.max(2, Math.ceil(line.name.length / 36)),
+        );
+        let fallback = measure(
+          line,
+          font,
+          bold,
+          18,
+          nameWidth,
+          quantityWidth,
+          true,
+        );
+        for (let size = 72; size >= 18; size--) {
+          const candidate = measure(
+            line,
+            font,
+            bold,
+            size,
+            nameWidth,
+            quantityWidth,
+            true,
+          );
+          const textWidth =
+            nameWidth - 12 - candidate.imageSize - candidate.imageGap;
+          const wholeWords = printable(line.name, bold)
+            .split(/\s+/)
+            .every((word) => bold.widthOfTextAtSize(word, size) <= textWidth);
+          if (candidate.height > ROW_SPACE / group.length) continue;
+          if (wholeWords) fallback = candidate;
+          if (wholeWords && candidate.nameLines.length <= lineLimit)
+            return candidate;
+        }
+        return fallback;
+      });
+    } else {
+      for (
+        let size = Math.min(72, Math.round(100 / Math.sqrt(group.length)));
+        size >= 18;
+        size--
+      ) {
+        const candidate = group.map((line) =>
+          measure(line, font, bold, size, nameWidth, quantityWidth),
+        );
+        if (candidate.reduce((sum, row) => sum + row.height, 0) <= ROW_SPACE) {
+          rows = candidate;
+          break;
+        }
       }
-      if (excess === 0) break;
     }
     const spare = ROW_SPACE - rows.reduce((n, r) => n + r.height, 0);
     return {

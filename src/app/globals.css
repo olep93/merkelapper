@@ -1810,3 +1810,14 @@ input:disabled {
   font-weight: 700;
   color: #000;
 }
+
+/* Lines are measured by the PDF layout; never break them again in the browser. */
+.paper-product-text strong {
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.paper-product-text strong > span,
+.paper-product-text > span {
+  white-space: nowrap;
+}

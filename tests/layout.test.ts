@@ -159,3 +159,47 @@ test("few products keep whole name phrases on wide lines with prominent EAN", as
   assert.equal(row.nameLines.join(" "), name);
   assert.ok(row.eanSize >= 28);
 });
+
+test("one to three products preserve whole words and a large unbroken EAN", async () => {
+  const { font, bold } = await fonts();
+  const names = [
+    "Kellen konstruksjonsskrue utendørs 6,0 x 120 mm 100 stk",
+    "Isolasjon mineralull plate til yttervegg og tak 100 x 570 x 1200 mm pakke med 6 plater",
+    "Terrassebord impregnert furu brun 28 x 120 mm lengde 4,8 meter",
+  ];
+  for (const count of [1, 2, 3])
+    for (const photos of [false, true]) {
+      const lines = normal(count).map((l, i) => ({
+        ...l,
+        name: names[i],
+        ...(photos
+          ? {
+              product: {
+                ean: l.ean,
+                name: names[i],
+                source: "Obs BYGG" as const,
+                sourceUrl: "https://www.obsbygg.no/test",
+                imageUrl: "https://www.obsbygg.no/test.jpg",
+                fetchedAt: new Date().toISOString(),
+              },
+            }
+          : {}),
+      }));
+      const pages = planPages(lines, font, bold);
+      assert.equal(pages.length, 1);
+      const page = pages[0];
+      for (const r of page.rows) {
+        assert.ok(
+          r.nameLines.length <= Math.max(2, Math.ceil(r.line.name.length / 36)),
+          r.nameLines.join(" / "),
+        );
+        assert.equal(r.nameLines.join(" "), r.line.name);
+        assert.equal(r.eanSize, 34);
+        const textWidth = page.nameWidth - 12 - r.imageSize - r.imageGap;
+        assert.ok(bold.widthOfTextAtSize(r.line.ean, r.eanSize) <= textWidth);
+        assert.ok(r.textHeight + 12 <= r.height);
+        for (const text of r.nameLines)
+          assert.ok(bold.widthOfTextAtSize(text, r.nameSize) <= textWidth);
+      }
+    }
+});
