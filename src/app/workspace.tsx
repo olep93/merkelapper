@@ -1,0 +1,1336 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  Hash,
+  LoaderCircle,
+  LockKeyhole,
+  Plus,
+  Printer,
+  ScanLine,
+  Search,
+  Tag,
+  Trash2,
+  Undo2,
+  X,
+  Cloud,
+  WifiOff,
+  Pencil,
+  CalendarDays,
+} from "lucide-react";
+import {
+  dateLabel,
+  emptyBody,
+  validEan,
+  osloDate,
+  type Sheet,
+  type SheetBody,
+  type Line,
+} from "@/lib/model";
+import { Scanner } from "./scanner";
+const API = "/merkelapp/api";
+type Layout = {
+  pages: {
+    nameWidth: number;
+    quantityWidth: number;
+    count: number;
+    fontSize: number;
+    lines: {
+      id: string;
+      nameLines: string[];
+      nameSize: number;
+      eanSize: number;
+      quantitySize: number;
+      height: number;
+    }[];
+  }[];
+};
+class RequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+async function api(path: string, options?: RequestInit) {
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 2; attempt++)
+    try {
+      response = await fetch(API + path, {
+        cache: "no-store",
+        ...options,
+        headers: { "Content-Type": "application/json", ...options?.headers },
+      });
+      break;
+    } catch {
+      if (attempt === 1)
+        throw new RequestError(
+          "Venter på nett. Endringene er ikke bekreftet lagret. Prøv igjen når du er på nett.",
+          0,
+        );
+    }
+  const data = await response!.json();
+  if (!response!.ok)
+    throw new RequestError(data.error || "Noe gikk galt.", response!.status);
+  return data;
+}
+export function Workspace() {
+  const [account, setAccount] = useState<{
+      name: string;
+      email: string;
+    } | null>(null),
+    [loading, setLoading] = useState(true),
+    [gate, setGate] = useState("");
+  const [sheets, setSheets] = useState<Sheet[]>([]),
+    [sheet, setSheet] = useState<Sheet | null>(null),
+    [draft, setDraft] = useState<SheetBody>(emptyBody),
+    [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [conflict, setConflict] = useState(false),
+    [scanner, setScanner] = useState(false),
+    [preview, setPreview] = useState(false),
+    [layout, setLayout] = useState<Layout | null>(null),
+    [layoutError, setLayoutError] = useState("");
+  const [form, setForm] = useState(false),
+    [ean, setEan] = useState(""),
+    [name, setName] = useState(""),
+    [qty, setQty] = useState(""),
+    [editId, setEditId] = useState<string | null>(null),
+    [duplicate, setDuplicate] = useState<Line | null>(null),
+    [formError, setFormError] = useState(""),
+    [removed, setRemoved] = useState<{ line: Line; index: number } | null>(
+      null,
+    );
+  const [pdfState, setPdfState] = useState(""),
+    [filter, setFilter] = useState<"all" | "draft" | "locked">("all");
+  const current = useRef<Sheet | null>(null),
+    bodyRef = useRef(draft),
+    working = useRef(false),
+    saved = useRef(""),
+    nameInput = useRef<HTMLInputElement>(null),
+    quantityInput = useRef<HTMLInputElement>(null);
+  bodyRef.current = draft;
+  function accept(s: Sheet) {
+    current.current = s;
+    setSheet(s);
+    setSheets((list) => [s, ...list.filter((x) => x.id !== s.id)]);
+  }
+  async function refresh() {
+    const list = await api("/sheets");
+    setSheets(list);
+  }
+  useEffect(() => {
+    (async () => {
+      try {
+        setAccount(await api("/session"));
+        await refresh();
+      } catch (e) {
+        setGate(e instanceof Error ? e.message : "Kunne ikke laste inn.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+  const dirty = Boolean(sheet) && JSON.stringify(draft) !== saved.current;
+  useEffect(() => {
+    const fn = (e: BeforeUnloadEvent) => {
+      if (
+        JSON.stringify(bodyRef.current) !== saved.current &&
+        current.current
+      ) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", fn);
+    return () => window.removeEventListener("beforeunload", fn);
+  }, []);
+  async function persist(body: SheetBody) {
+    if (
+      working.current ||
+      !current.current ||
+      current.current.state !== "draft"
+    )
+      return false;
+    const encoded = JSON.stringify(body);
+    if (encoded === saved.current) return true;
+    working.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const s = await api(`/sheets/${current.current.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: "save",
+          version: current.current.version,
+          operation: crypto.randomUUID(),
+          body,
+        }),
+      });
+      accept(s);
+      saved.current = encoded;
+      setConflict(false);
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      if (e instanceof RequestError && e.status === 409) setConflict(true);
+      return false;
+    } finally {
+      working.current = false;
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (
+      !sheet ||
+      sheet.state !== "draft" ||
+      !dirty ||
+      busy ||
+      conflict ||
+      error
+    )
+      return;
+    const t = setTimeout(() => {
+      void persist(draft);
+    }, 550);
+    return () => clearTimeout(t);
+  }, [draft, sheet, busy, dirty, conflict, error]);
+  useEffect(() => {
+    if (!sheet || !draft.lines.length) {
+      setLayout(null);
+      setLayoutError("");
+      return;
+    }
+    let stopped = false;
+    const timer = setTimeout(() => {
+      api("/layout", { method: "POST", body: JSON.stringify(draft) })
+        .then((d) => {
+          if (!stopped) {
+            setLayout(d);
+            setLayoutError("");
+          }
+        })
+        .catch((e) => {
+          if (!stopped) {
+            setLayout(null);
+            setLayoutError(e.message);
+          }
+        });
+    }, 400);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [draft, sheet?.id]);
+  function select(s: Sheet) {
+    if (working.current) return;
+    if (
+      dirty &&
+      !confirm("Du har endringer som ikke er lagret. Forlate lappen?")
+    )
+      return;
+    current.current = s;
+    saved.current = JSON.stringify(s.body);
+    setSheet(s);
+    setDraft(s.body);
+    setError("");
+    setConflict(false);
+    setPreview(false);
+    setForm(false);
+    setRemoved(null);
+    setPdfState("");
+  }
+  async function create() {
+    if (busy) return;
+    if (dirty && !(await persist(bodyRef.current))) return;
+    setBusy(true);
+    setError("");
+    try {
+      const body = emptyBody();
+      const s = await api("/sheets", {
+        method: "POST",
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          operation: crypto.randomUUID(),
+          body,
+        }),
+      });
+      accept(s);
+      saved.current = JSON.stringify(body);
+      setDraft(body);
+      setPreview(false);
+      setForm(false);
+      setRemoved(null);
+      setPdfState("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function action(action: "lock" | "reopen" | "printed" | "delete") {
+    if (busy || working.current || !current.current) return;
+    if (
+      action === "delete" &&
+      !confirm("Slette denne lappen og tilhørende utskrifter?")
+    )
+      return;
+    if (dirty && !(await persist(bodyRef.current))) return;
+    if (action === "lock" && layoutError) {
+      setError(layoutError);
+      return;
+    }
+    setBusy(true);
+    working.current = true;
+    setError("");
+    try {
+      const data = await api(`/sheets/${current.current.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          action,
+          version: current.current.version,
+          operation: crypto.randomUUID(),
+        }),
+      });
+      if (action === "delete") {
+        const id = current.current.id;
+        current.current = null;
+        setSheet(null);
+        setSheets((s) => s.filter((x) => x.id !== id));
+        saved.current = "";
+        setDraft(emptyBody());
+      } else {
+        accept(data);
+        setDraft(data.body);
+        saved.current = JSON.stringify(data.body);
+        if (action === "lock") {
+          setPreview(true);
+          setPdfState("");
+        }
+      }
+    } catch (e) {
+      setError((e as Error).message);
+      if (e instanceof RequestError && e.status === 409) setConflict(true);
+    } finally {
+      working.current = false;
+      setBusy(false);
+    }
+  }
+  function openForm(code = "", line?: Line) {
+    setEan(line?.ean || code);
+    setName(line?.name || "");
+    setQty(line ? String(line.quantity) : "");
+    setEditId(line?.id || null);
+    setDuplicate(null);
+    setFormError("");
+    setForm(true);
+    setScanner(false);
+    setTimeout(() => {
+      if (line) quantityInput.current?.focus();
+      else if (code) nameInput.current?.focus();
+    }, 50);
+  }
+  function read(code: string) {
+    const previous = draft.lines.find((l) => l.ean === code);
+    openForm(code);
+    if (previous) {
+      setName(previous.name);
+      setDuplicate(previous);
+    }
+  }
+  function addLine(mode: "add" | "replace" = "add", scanNext = false) {
+    if (!validEan(ean)) {
+      setFormError(
+        "Skriv en gyldig EAN-8 eller EAN-13 med riktig kontrollsiffer.",
+      );
+      return;
+    }
+    if (!name.trim()) {
+      setFormError("Skriv inn varenavnet.");
+      return;
+    }
+    if (!/^\d+$/.test(qty) || !Number.isSafeInteger(Number(qty))) {
+      setFormError("Antall må være et heltall fra 0.");
+      return;
+    }
+    const existing = draft.lines.find((l) => l.ean === ean && l.id !== editId);
+    if (existing && !duplicate && !editId) {
+      setDuplicate(existing);
+      return;
+    }
+    let lines: Line[];
+    if (existing && !editId) {
+      const n = mode === "add" ? existing.quantity + Number(qty) : Number(qty);
+      if (!Number.isSafeInteger(n)) {
+        setFormError("Antallet er for stort.");
+        return;
+      }
+      lines = draft.lines.map((l) =>
+        l.id === existing.id ? { ...l, name: name.trim(), quantity: n } : l,
+      );
+    } else if (editId) {
+      if (existing) {
+        setFormError(
+          "Denne EAN finnes på en annen linje. Avbryt og skann den for å legge til eller erstatte.",
+        );
+        return;
+      }
+      lines = draft.lines.map((l) =>
+        l.id === editId
+          ? { ...l, ean, name: name.trim(), quantity: Number(qty) }
+          : l,
+      );
+    } else
+      lines = [
+        ...draft.lines,
+        {
+          id: crypto.randomUUID(),
+          ean,
+          name: name.trim(),
+          quantity: Number(qty),
+        },
+      ];
+    setDraft({ ...draft, lines });
+    setError("");
+    setForm(false);
+    setDuplicate(null);
+    if (scanNext) setScanner(true);
+  }
+  function remove(line: Line) {
+    setRemoved({ line, index: draft.lines.findIndex((l) => l.id === line.id) });
+    setDraft({ ...draft, lines: draft.lines.filter((l) => l.id !== line.id) });
+    setError("");
+  }
+  function undo() {
+    if (!removed) return;
+    const lines = [...draft.lines];
+    lines.splice(removed.index, 0, removed.line);
+    setDraft({ ...draft, lines });
+    setRemoved(null);
+    setError("");
+  }
+  async function reload() {
+    if (!sheet) return;
+    if (
+      dirty &&
+      !confirm("Erstatte lokale endringer med siste lagrede versjon?")
+    )
+      return;
+    try {
+      const s = await api(`/sheets/${sheet.id}`);
+      saved.current = JSON.stringify(s.body);
+      accept(s);
+      setDraft(s.body);
+      setConflict(false);
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function openPdf() {
+    if (!sheet || busy) return;
+    const pdfWindow = window.open("about:blank", "_blank");
+    setPdfState("PDF klargjøres …");
+    setError("");
+    try {
+      const response = await fetch(`${API}/sheets/${sheet.id}/pdf`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const d = await response.json();
+        throw new Error(d.error || "PDF-feil");
+      }
+      const blob = await response.blob(),
+        url = URL.createObjectURL(blob);
+      if (pdfWindow) {
+        pdfWindow.opener = null;
+        pdfWindow.location.href = url;
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `merkelapp-${sheet.id.slice(0, 8)}-r${sheet.revision}.pdf`;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+      setPdfState("PDF klar. Velg A3 og faktisk størrelse / 100 %.");
+    } catch (e) {
+      pdfWindow?.close();
+      setPdfState("PDF-feil – prøv igjen.");
+      setError((e as Error).message);
+    }
+  }
+  const locked = sheet?.state === "locked",
+    lineCount = draft.lines.length,
+    pageCount = layout?.pages.length;
+  const visible = sheets.filter(
+    (s) =>
+      (filter === "all" || s.state === filter) &&
+      (!query ||
+        JSON.stringify([
+          s.body.title,
+          s.body.date,
+          s.body.location,
+          s.id,
+          ...s.body.lines.map((l) => [l.name, l.ean]),
+        ])
+          .toLowerCase()
+          .includes(query.toLowerCase())),
+  );
+  return (
+    <>
+      <header className="app-header">
+        <div className="header-inner">
+          <a href="https://jobbverktoy.no" className="portal-logo">
+            <img src="https://jobbverktoy.no/logo.svg" alt="Jobbverktøy" />
+          </a>
+          <span className="header-divider" />
+          <a className="app-brand" href="/merkelapp">
+            <span className="brand-icon">
+              <Tag size={20} />
+            </span>
+            Merkelapp
+          </a>
+          <span className="test-badge">Første utgave</span>
+          <span className="account-name">{account?.name}</span>
+        </div>
+      </header>
+      {loading ? (
+        <main className="gate">
+          <LoaderCircle className="spin" />
+          <p>Henter lappene dine …</p>
+        </main>
+      ) : gate ? (
+        <main className="gate">
+          <LockKeyhole size={36} />
+          <h1>Merkelapp</h1>
+          <p>{gate}</p>
+          <a className="button primary" href="https://jobbverktoy.no/logg-inn">
+            Åpne Jobbverktøy <ArrowRight size={18} />
+          </a>
+        </main>
+      ) : (
+        <main className="workspace">
+          <aside className={`sidebar ${sheet ? "mobile-hidden" : ""}`}>
+            <div className="sidebar-heading">
+              <div>
+                <span className="eyebrow">DITT ARBEIDSOMRÅDE</span>
+                <h1>
+                  Mine lapper<span>{sheets.length}</span>
+                </h1>
+              </div>
+              <button
+                className="button primary"
+                onClick={create}
+                disabled={busy}
+              >
+                <Plus size={19} /> Ny lapp
+              </button>
+            </div>
+            <div className="search-field">
+              <Search size={18} />
+              <input
+                aria-label="Søk i lapper"
+                placeholder="Søk vare, EAN eller dato"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <div className="filters">
+              {[
+                ["all", "Alle"],
+                ["draft", "Utkast"],
+                ["locked", "Låste"],
+              ].map(([v, label]) => (
+                <button
+                  key={v}
+                  className={filter === v ? "selected" : ""}
+                  onClick={() => setFilter(v as typeof filter)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="sheet-list">
+              {visible.map((s) => (
+                <button
+                  key={s.id}
+                  className={`sheet-card ${sheet?.id === s.id ? "selected" : ""}`}
+                  onClick={() => select(s)}
+                  disabled={busy}
+                >
+                  <span className={`sheet-symbol ${s.state}`}>
+                    <FileText size={21} />
+                  </span>
+                  <span className="sheet-card-copy">
+                    <strong>
+                      {s.body.title || `Lapp ${dateLabel(s.body.date)}`}
+                    </strong>
+                    <span>
+                      {dateLabel(s.body.date)} · {s.body.lines.length}{" "}
+                      {s.body.lines.length === 1 ? "vare" : "varer"}
+                    </span>
+                    <span className={`status small ${s.state}`}>
+                      {s.state === "locked" ? (
+                        <LockKeyhole size={11} />
+                      ) : (
+                        <span className="dot" />
+                      )}
+                      {s.state === "locked" ? "Låst" : "Utkast"}
+                      {s.delete_after
+                        ? " · Slettes " +
+                          dateLabel(osloDate(new Date(s.delete_after)))
+                        : ""}
+                    </span>
+                  </span>
+                  <ChevronRight size={16} />
+                </button>
+              ))}
+              {!visible.length && (
+                <div className="list-empty">
+                  <FolderOpen size={29} />
+                  <p>
+                    {query
+                      ? "Ingen lapper passer søket."
+                      : "Lappene dine dukker opp her."}
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="sidebar-note">
+              <Cloud size={18} />
+              <p>
+                Lagres på kontoen din.
+                <br />
+                Tilgjengelig på mobil og PC.
+              </p>
+            </div>
+          </aside>
+          <section className="editor">
+            {!sheet && error && (
+              <div className="error-banner" role="alert">
+                {error}
+              </div>
+            )}
+            {!sheet ? (
+              <div className="welcome">
+                <span className="welcome-icon">
+                  <ScanLine size={42} />
+                </span>
+                <span className="eyebrow">FRA STREKKODE TIL FERDIG LAPP</span>
+                <h2>Skann. Tell. Skriv ut.</h2>
+                <p>
+                  Samle varene på én lapp.
+                  <br />
+                  Vi fordeler dem på tydelige A3-ark.
+                </p>
+                <button
+                  className="button primary large"
+                  onClick={create}
+                  disabled={busy}
+                >
+                  <Plus size={20} /> Start en ny lapp
+                </button>
+                <div className="welcome-steps">
+                  <span>
+                    <ScanLine /> Skann varer
+                  </span>
+                  <i />
+                  <span>
+                    <Hash /> Oppgi antall
+                  </span>
+                  <i />
+                  <span>
+                    <Printer /> Skriv ut A3
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  className="back-mobile text-button"
+                  onClick={() => {
+                    if (
+                      !busy &&
+                      (!dirty || confirm("Forlate ulagrede endringer?"))
+                    ) {
+                      setSheet(null);
+                      current.current = null;
+                      saved.current = "";
+                    }
+                  }}
+                >
+                  <ArrowLeft size={16} /> Mine lapper
+                </button>
+                <div className="editor-top">
+                  <div>
+                    <span className="eyebrow">
+                      LAPP {sheet.id.slice(0, 8).toUpperCase()}
+                    </span>
+                    <h2>{draft.title || "Ny varetelling"}</h2>
+                    <div className="editor-sub">
+                      <span className={`status ${sheet.state}`}>
+                        {locked ? (
+                          <LockKeyhole size={12} />
+                        ) : (
+                          <span className="dot" />
+                        )}
+                        {locked
+                          ? `Låst · revisjon ${sheet.revision}`
+                          : "Utkast"}
+                      </span>
+                      <span
+                        className={`save-status ${error && dirty ? "failed" : ""}`}
+                        role="status"
+                      >
+                        {busy ? (
+                          <>
+                            <LoaderCircle size={13} className="spin" /> Lagrer …
+                          </>
+                        ) : error && dirty ? (
+                          <>
+                            <WifiOff size={13} /> Ikke lagret
+                          </>
+                        ) : dirty ? (
+                          <>
+                            <Cloud size={13} /> Venter på lagring
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 size={13} /> Lagret på kontoen
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    className="icon-button delete-sheet"
+                    title="Slett lapp"
+                    aria-label="Slett lapp"
+                    onClick={() => action("delete")}
+                    disabled={busy}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+                {error && (
+                  <div className="error-banner" role="alert">
+                    <span>{error}</span>
+                    {conflict ? (
+                      <button onClick={reload}>Last inn lagret versjon</button>
+                    ) : (
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          setError("");
+                          void persist(bodyRef.current);
+                        }}
+                      >
+                        Prøv igjen
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="metadata-grid">
+                  <label>
+                    Navn på lappen
+                    <input
+                      disabled={locked}
+                      maxLength={100}
+                      placeholder="F.eks. Skruer · reol 4"
+                      value={draft.title}
+                      onChange={(e) => {
+                        setDraft({ ...draft, title: e.target.value });
+                        setError("");
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Telledato
+                    <input
+                      aria-label="Telledato"
+                      type="date"
+                      disabled={locked}
+                      value={draft.date}
+                      onChange={(e) => {
+                        setDraft({ ...draft, date: e.target.value });
+                        setError("");
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Sone / plassering <span>valgfritt</span>
+                    <input
+                      disabled={locked}
+                      maxLength={120}
+                      placeholder="F.eks. Gang 12"
+                      value={draft.location}
+                      onChange={(e) => {
+                        setDraft({ ...draft, location: e.target.value });
+                        setError("");
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="editor-tabs">
+                  <button
+                    className={!preview ? "active" : ""}
+                    onClick={() => setPreview(false)}
+                  >
+                    <Tag size={17} /> Varelinjer <span>{lineCount}</span>
+                  </button>
+                  <button
+                    className={preview ? "active" : ""}
+                    onClick={() => setPreview(true)}
+                  >
+                    <FileText size={17} /> A3-forhåndsvisning
+                    {pageCount ? (
+                      <span>
+                        {pageCount} {pageCount === 1 ? "ark" : "ark"}
+                      </span>
+                    ) : null}
+                  </button>
+                </div>
+                {preview ? (
+                  <div className="preview-area">
+                    {layoutError ? (
+                      <div className="error-banner">{layoutError}</div>
+                    ) : !lineCount ? (
+                      <div className="empty-lines">
+                        <FileText size={32} />
+                        <h3>Legg til en vare først</h3>
+                        <p>Her ser du hvordan varene fordeles på A3.</p>
+                      </div>
+                    ) : !layout ? (
+                      <p className="muted">Beregner sidefordeling …</p>
+                    ) : (
+                      <>
+                        <div className="preview-info">
+                          <span>
+                            <FileText size={15} /> {layout.pages.length} A3-ark
+                            · {layout.pages.map((p) => p.count).join(" + ")}{" "}
+                            varer
+                          </span>
+                          <span>Størrelsen tilpasses automatisk</span>
+                        </div>
+                        {layout.pages.map((p, i) => (
+                          <div className="paper" key={i}>
+                            <div className="paper-heading">
+                              <strong>VARETELLING</strong>
+                              <b>{dateLabel(draft.date)}</b>
+                            </div>
+                            {draft.location && (
+                              <div className="paper-location">
+                                {draft.location}
+                              </div>
+                            )}
+                            <div
+                              className="paper-column-head"
+                              style={{
+                                gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${(54 * 72) / 25.4}fr`,
+                              }}
+                            >
+                              <span>VARE / EAN</span>
+                              <span>ANTALL</span>
+                              <span>SKANN VARE</span>
+                            </div>
+                            <div className="paper-rows">
+                              {p.lines.map((r) => {
+                                const l = draft.lines.find(
+                                  (l) => l.id === r.id,
+                                )!;
+                                return (
+                                  <div
+                                    className="paper-row"
+                                    key={r.id}
+                                    style={{
+                                      flex: r.height,
+                                      gridTemplateColumns: `${p.nameWidth}fr ${p.quantityWidth}fr ${(54 * 72) / 25.4}fr`,
+                                    }}
+                                  >
+                                    <div className="paper-product">
+                                      <strong
+                                        style={{
+                                          fontSize: `${(r.nameSize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                        }}
+                                      >
+                                        {r.nameLines.map((text, j) => (
+                                          <span
+                                            key={j}
+                                            style={{ display: "block" }}
+                                          >
+                                            {text}
+                                          </span>
+                                        ))}
+                                      </strong>
+                                      <span
+                                        style={{
+                                          fontSize: `${(r.eanSize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                        }}
+                                      >
+                                        {l.ean}
+                                      </span>
+                                    </div>
+                                    <b
+                                      className="paper-quantity"
+                                      style={{
+                                        fontSize: `${(r.quantitySize * 100) / ((277 * 72) / 25.4)}cqw`,
+                                      }}
+                                    >
+                                      {l.quantity}
+                                    </b>
+                                    <div className="paper-barcode">
+                                      <Barcode ean={l.ean} />
+                                      <small>{l.ean}</small>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="paper-footer">
+                              <span>
+                                {sheet.id.slice(0, 8).toUpperCase()} ·{" "}
+                                {locked
+                                  ? `Revisjon ${sheet.revision}`
+                                  : "Utkast"}
+                              </span>
+                              <span>
+                                Side {i + 1} av {layout.pages.length}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        <p className="preview-disclaimer">
+                          Forhåndsvisning av fordelingen. PDF-en har nøyaktige
+                          A3-mål og vektorstrekkoder.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {!locked && (
+                      <div className="add-toolbar">
+                        <button
+                          className="button primary scan-button"
+                          onClick={() => setScanner(true)}
+                          disabled={busy || conflict}
+                        >
+                          <ScanLine size={23} /> Skann vare<span>Kamera</span>
+                        </button>
+                        <button
+                          className="button secondary manual-button"
+                          onClick={() => openForm()}
+                          disabled={busy || conflict}
+                        >
+                          <Plus size={18} /> Legg til manuelt
+                        </button>
+                      </div>
+                    )}
+                    {removed && !locked && (
+                      <div className="undo-bar">
+                        <span>Varen er fjernet.</span>
+                        <button onClick={undo}>
+                          <Undo2 size={15} /> Angre
+                        </button>
+                      </div>
+                    )}
+                    <div className="lines-heading">
+                      <span>
+                        {lineCount} {lineCount === 1 ? "vare" : "varer"} på
+                        lappen
+                      </span>
+                      <span>
+                        {pageCount
+                          ? `${pageCount} A3-${pageCount === 1 ? "ark" : "ark"}`
+                          : "A3 stående"}
+                      </span>
+                    </div>
+                    {!lineCount ? (
+                      <div className="empty-lines">
+                        <div className="empty-scan">
+                          <ScanLine size={38} />
+                        </div>
+                        <h3>Klar for første vare</h3>
+                        <p>
+                          Skann strekkoden på varen og oppgi antall.
+                          <br />
+                          Du kan også skrive inn EAN manuelt.
+                        </p>
+                        <div className="empty-tip">
+                          <Check size={14} /> Antall starter tomt. Du bestemmer
+                          tallet.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="line-list">
+                        {draft.lines.map((line, i) => (
+                          <div className="line-card" key={line.id}>
+                            <span className="line-number">
+                              {String(i + 1).padStart(2, "0")}
+                            </span>
+                            <div className="line-copy">
+                              <strong>{line.name}</strong>
+                              <span>{line.ean}</span>
+                            </div>
+                            <div className="line-quantity">
+                              <small>ANTALL</small>
+                              <strong>{line.quantity}</strong>
+                            </div>
+                            {!locked && (
+                              <div className="line-actions">
+                                <button
+                                  className="icon-button"
+                                  aria-label={`Rediger ${line.name}`}
+                                  onClick={() => openForm("", line)}
+                                  disabled={busy || conflict}
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                <button
+                                  className="icon-button"
+                                  aria-label={`Fjern ${line.name}`}
+                                  onClick={() => remove(line)}
+                                  disabled={busy || conflict}
+                                >
+                                  <X size={17} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                <footer className="editor-footer">
+                  <div className="retention">
+                    <CalendarDays size={17} />
+                    <p>
+                      {sheet.delete_after ? (
+                        <>
+                          Slettes automatisk{" "}
+                          <strong>
+                            {dateLabel(osloDate(new Date(sheet.delete_after)))}
+                          </strong>
+                          .
+                        </>
+                      ) : (
+                        <>
+                          Beholdes frem til utskrift.
+                          <br />
+                          <span>
+                            Slettes 7 dager etter «Markér som skrevet ut».
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="footer-actions">
+                    {locked ? (
+                      <>
+                        <button
+                          className="button secondary"
+                          onClick={() => action("reopen")}
+                          disabled={busy}
+                        >
+                          Åpne for redigering
+                        </button>
+                        <button
+                          className="button primary"
+                          onClick={openPdf}
+                          disabled={busy || pdfState === "PDF klargjøres …"}
+                        >
+                          <Printer size={18} /> Åpne PDF
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="button primary"
+                        onClick={() => action("lock")}
+                        disabled={
+                          busy || conflict || !lineCount || Boolean(layoutError)
+                        }
+                      >
+                        <LockKeyhole size={17} /> Lås for utskrift{" "}
+                        <ArrowRight size={17} />
+                      </button>
+                    )}
+                  </div>
+                </footer>
+                {locked && (
+                  <div className="print-confirm">
+                    <div>
+                      <strong>
+                        {pdfState || "Lappen er låst og klar for PDF."}
+                      </strong>
+                      <p>
+                        Har du skrevet ut? Bekreft under for å starte
+                        nedtellingen til sletting.
+                      </p>
+                    </div>
+                    <button
+                      className="button secondary"
+                      onClick={() => action("printed")}
+                      disabled={busy || !!sheet.printed_at}
+                    >
+                      <CheckCircle2 size={17} />
+                      {sheet.printed_at
+                        ? "Markert som skrevet ut"
+                        : "Markér som skrevet ut"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        </main>
+      )}
+      {scanner && <Scanner onRead={read} onClose={() => setScanner(false)} />}
+      {form && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="product-title"
+        >
+          <section className="product-modal">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">
+                  {editId
+                    ? "REDIGER VARE"
+                    : ean
+                      ? "KODE LEST"
+                      : "MANUELL REGISTRERING"}
+                </span>
+                <h2 id="product-title">
+                  {editId
+                    ? "Endre vare"
+                    : ean
+                      ? "Kontroller varen"
+                      : "Legg til vare"}
+                </h2>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setForm(false)}
+                aria-label="Lukk vare"
+              >
+                <X />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addLine("add");
+              }}
+            >
+              <label>
+                EAN
+                <input
+                  aria-label="EAN"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={ean}
+                  maxLength={13}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (validEan(ean)) {
+                        const l = draft.lines.find(
+                          (l) => l.ean === ean && l.id !== editId,
+                        );
+                        if (l) {
+                          setDuplicate(l);
+                          setName(l.name);
+                        }
+                        nameInput.current?.focus();
+                      } else
+                        setFormError("Kontroller EAN og kontrollsifferet.");
+                    }
+                  }}
+                  onChange={(e) => {
+                    setEan(e.target.value.replace(/\s/g, ""));
+                    setDuplicate(null);
+                  }}
+                  onBlur={() => {
+                    const l = draft.lines.find(
+                      (l) => l.ean === ean && l.id !== editId,
+                    );
+                    if (l) {
+                      setDuplicate(l);
+                      if (!name) setName(l.name);
+                    }
+                  }}
+                />
+              </label>
+              <div className="manual-notice">
+                <Tag size={16} />
+                <span>
+                  Automatisk produktoppslag kommer senere. Oppgi varenavnet selv
+                  i denne utgaven.
+                </span>
+              </div>
+              <label>
+                Varenavn
+                <input
+                  ref={nameInput}
+                  aria-label="Varenavn"
+                  autoComplete="off"
+                  maxLength={500}
+                  placeholder="Fullt navn og variant"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
+              <label>
+                Antall
+                <input
+                  ref={quantityInput}
+                  className="quantity-input"
+                  aria-label="Antall"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="0"
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                />
+              </label>
+              {duplicate && (
+                <div className="duplicate-notice">
+                  <strong>Varen finnes allerede: {duplicate.quantity}</strong>
+                  <p>
+                    Legg antallet til eksisterende antall, eller erstatt det.
+                  </p>
+                </div>
+              )}
+              {formError && (
+                <p className="form-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <div className="product-buttons">
+                {duplicate ? (
+                  <>
+                    <button
+                      className="button primary"
+                      type="button"
+                      onClick={() => addLine("add")}
+                    >
+                      <Plus size={18} /> Legg til antall
+                    </button>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => addLine("replace")}
+                    >
+                      Erstatt antall
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="button primary"
+                      type="button"
+                      onClick={() => addLine("add", !editId)}
+                    >
+                      {editId ? <Check size={18} /> : <ScanLine size={18} />}{" "}
+                      {editId ? "Lagre endring" : "Legg til og skann neste"}
+                    </button>
+                    {!editId && (
+                      <button className="button secondary" type="submit">
+                        Legg til og lukk
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              <button
+                className="text-button cancel"
+                type="button"
+                onClick={() => setForm(false)}
+              >
+                Avbryt
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
+const L = [
+  "0001101",
+  "0011001",
+  "0010011",
+  "0111101",
+  "0100011",
+  "0110001",
+  "0101111",
+  "0111011",
+  "0110111",
+  "0001011",
+];
+const G = [
+  "0100111",
+  "0110011",
+  "0011011",
+  "0100001",
+  "0011101",
+  "0111001",
+  "0000101",
+  "0010001",
+  "0001001",
+  "0010111",
+];
+const parity = [
+  "LLLLLL",
+  "LLGLGG",
+  "LLGGLG",
+  "LLGGGL",
+  "LGLLGG",
+  "LGGLLG",
+  "LGGGLL",
+  "LGLGLG",
+  "LGLGGL",
+  "LGGLGL",
+];
+function Barcode({ ean }: { ean: string }) {
+  const R = (d: string) =>
+    L[+d].replace(/[01]/g, (c) => (c === "0" ? "1" : "0"));
+  const bits =
+    ean.length === 8
+      ? "101" +
+        [...ean.slice(0, 4)].map((d) => L[+d]).join("") +
+        "01010" +
+        [...ean.slice(4)].map(R).join("") +
+        "101"
+      : "101" +
+        [...ean.slice(1, 7)]
+          .map((d, i) => (parity[+ean[0]][i] === "L" ? L : G)[+d])
+          .join("") +
+        "01010" +
+        [...ean.slice(7)].map(R).join("") +
+        "101";
+  return (
+    <svg
+      viewBox={`-11 0 ${bits.length + 18} 65`}
+      role="img"
+      aria-label={`Strekkode ${ean}`}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      {[...bits].map((b, i) =>
+        b === "1" ? (
+          <rect key={i} x={i} y="0" width="1" height="65" fill="black" />
+        ) : null,
+      )}
+    </svg>
+  );
+}
