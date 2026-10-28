@@ -9,7 +9,7 @@ Mobilskanning, private tellingslapper og balansert A3-utskrift i Jobbverktøy.
 - Felles Supabase-innlogging med portalen. Krever `merkelapp` i brukerens serverstyrte `app_metadata.apps`.
 - Egne lapper per konto. Ny lapp, søk, autosparing og åpning på mobil/PC.
 - ZXing-C++ via `zxing-wasm`, med lokalt servert WASM. EAN-8/13, kontrollsiffer, bakre kamera, smalt avlesningsområde, kameravalg og lys/zoom der tilgjengelig. Pause ved treff og stopp ved lukking/skjermlås. Manuell EAN eller HID-skanner i EAN-feltet med Enter. Bildeavlesning som reserve.
-- Varenavn fylles inn manuelt. Ingen automatisk Obs BYGG-integrasjon i denne versjonen.
+- Eksakt EAN-oppslag mot Obs BYGG henter varenavn, pakningsvariant og produktbilde. Treff bekreftes mot strukturerte produktdata på produktsiden. Navnet kan redigeres, og manuell registrering fungerer ved manglende treff eller teknisk feil. Bilde vises ved registrering og i varelisten.
 - Antall starter tomt og må være et heltall >= 0. Duplikat-EAN krever eksplisitt Legg til/Erstatt/Avbryt. Fjernede linjer kan angres.
 - Lås før utskrift. PDF genereres fra en uforanderlig revisjon. Gjenåpning krever ny låsing før neste utskrift.
 - A3 stående, vektorstrekkoder, lesbar EAN og bare tallet i antallskolonnen. Målt tekst og balansert sidefordeling: normalt 10 varer på ett ark, 12 fordelt 6+6. Færre varer får større skrift og mer plass. Ekstremt store antall får bredere antallskolonne.
@@ -39,7 +39,7 @@ Portalen har Merkelapp i `tools.ts`, `zones.ts`, rewrites, service worker-unntak
 
 ### Kontroll og begrensninger
 
-Se `QA.md` for hva som faktisk er kontrollert. Mobilkamera på fysiske etiketter og papirskanning må prøves i butikken. Lokal forhåndsvisning viser sidefordelingen; PDF-en er den autoritative utskriften. Denne versjonen bruker ingen produktbilder, så bildene kan ikke introdusere en konkurrerende strekkode.
+Se `QA.md` for hva som faktisk er kontrollert. Mobilkamera på fysiske etiketter og papirskanning må prøves i butikken. Lokal forhåndsvisning viser sidefordelingen; PDF-en er den autoritative utskriften. PDF-en bruker fortsatt kun de genererte vektorstrekkodene og tekst, slik at produktbilder ikke kan introdusere konkurrerende skannbare koder. Produktbilder vises i registreringen og varelisten.
 
 `node scripts/check-database.mjs` oppretter og rydder bort isolerte testkontoer for integrasjonstesten. `node scripts/qa-account.mjs create` lager en midlertidig UI-konto i en ignorert lokal fil; fjern den etter test med `node scripts/qa-account.mjs remove`. `node scripts/check-http.mjs <portal-url>` bruker denne kontoen til å teste de ekte HTTP-rutene.
 
@@ -48,3 +48,17 @@ ZXing-WASM har MIT-lisens, underliggende ZXing-C++ har Apache-2.0-lisens. Tredje
 ### Portalens kildekode ved første levering
 
 Portaltillegget er lagret på `codex/merkelapp-portal` i `olep93/jobbverktoy` og lagt inn i portalens eksisterende arbeidsmappe. Seks eksisterende konto-/innloggingsfiler var allerede i drift, men ikke committet; disse er bevart urørt i arbeidsmappen og i produksjonsdeployen. Ikke deploy portalens gamle `main` direkte før disse eksisterende endringene og Merkelapp-integrasjonen er samlet i en gjennomgått commit/merge.
+
+## Obs BYGG-oppslag – testintegrasjon
+
+`POST /merkelapp/api/products` krever innlogging og Merkelapp-tilgang. En gyldig EAN sendes til nettbutikkens offentlige autocomplete-funksjon. Kandidaten er ikke et bekreftet treff før produktsidens JSON-LD har eksplisitt samsvarende GTIN eller `ObsBygg-<EAN>` som SKU. Variantens navn, størrelse/farge og bilde brukes. Ingen søkemotortreff eller EAN i fritekst brukes som identitetsbevis. Flere verifiserte treff må velges av bruker.
+
+Dette er en begrenset testintegrasjon mot den offentlige nettbutikken, ikke en avtalt eller dokumentert leverandør-API. Den bruker ingen innlogging, API-nøkkel eller omgåelse av beskyttelse. Tilgangsfeil/429 stopper oppslaget og gir manuell reserveflyt. Nettbutikkens pris-/lagerfelt fra autocomplete brukes ikke og lagres ikke. Ikke bruk dette til bulkinnhenting.
+
+- Tidsgrense 8 sekunder, maks fire kandidatsider, inntil 30 forespørsler per bruker/minutt per serverinstans.
+- Verifiserte treff mellomlagres i prosessminnet i fire timer; manglende treff i fem minutter. Nettverksfeil mellomlagres ikke. Samtidige identiske forespørsler slås sammen.
+- Bare produktbilder fra tillatte `https://www.obsbygg.no/globalassets/...`-stier vises. Manglende/feil bilde gir et nøytralt ikon.
+- EAN, kildenavn, originalt varenavn, bilde-URL, produktlenke og hentetid lagres i varelinjens valgfrie `product`-felt og følger den låste revisjonen. Den redigerbare `name` er adskilt fra kildenavnet. Ingen ny databasemigrering kreves.
+- Et forsinket svar kan ikke fylle inn en annen vare eller overskrive et manuelt redigert navn. Eksisterende linjer beholder navnet sitt; «Bruk varenavnet fra Obs BYGG» er et eksplisitt valg.
+
+Kjør `pnpm exec tsx scripts/check-products.ts` for de ti reelle eksempel-EAN-ene og bildene. `node scripts/check-product-http.mjs <test-url>` kontrollerer oppslag, metadata, kontolagring, manuelt navn, revisjon og PDF mot en midlertidig QA-konto.

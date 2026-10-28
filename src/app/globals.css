@@ -1634,3 +1634,133 @@ input:disabled {
 .camera-stage video {
   object-fit: cover;
 }
+.product-photo {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #acb7c5;
+}
+.product-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
+.product-photo.large {
+  width: 90px;
+  height: 90px;
+  border-radius: 10px;
+}
+.lookup-panel {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 52px;
+  padding: 13px;
+  border-radius: 9px;
+  background: #f5f7fb;
+  color: #7e8c9f;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.lookup-panel > svg {
+  flex-shrink: 0;
+}
+.lookup-panel.found {
+  align-items: center;
+  background: #f7faff;
+  border: 1px solid #e4edf9;
+  padding: 12px;
+  gap: 15px;
+}
+.lookup-product-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+}
+.lookup-product-copy strong {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #354661;
+}
+.lookup-product-copy > span {
+  font-size: 9px;
+  color: #7d958e;
+}
+.lookup-product-copy a {
+  font-size: 10px;
+  color: var(--blue);
+  width: fit-content;
+}
+.lookup-retry {
+  align-self: flex-start;
+  margin-top: -17px;
+  font-size: 10px;
+  padding: 4px 0;
+}
+.lookup-panel.unavailable {
+  background: #fff8eb;
+  color: #9d8452;
+}
+.lookup-choices {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lookup-choices > strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.lookup-choices button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #dfe7f3;
+  border-radius: 8px;
+  background: white;
+  color: #4d627f;
+  padding: 8px;
+  text-align: left;
+}
+.lookup-choices button:hover {
+  border-color: var(--blue);
+}
+@media (max-width: 720px) {
+  .line-list .line-card {
+    gap: 8px;
+  }
+  .line-card .product-photo {
+    width: 40px;
+    height: 46px;
+  }
+  .line-card .line-number {
+    display: none;
+  }
+  .line-card .line-copy strong {
+    font-size: 12px;
+  }
+  .line-card .line-copy > span {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .lookup-panel.found {
+    gap: 12px;
+  }
+  .product-photo.large {
+    width: 80px;
+    height: 80px;
+  }
+  .lookup-product-copy strong {
+    font-size: 12px;
+  }
+}

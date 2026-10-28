@@ -29,7 +29,15 @@
 - Kamera på faktisk iPhone/Safari og Android/Chrome, inkludert valg av bakre objektiv, lys/zoom, skjermlås og lengre bruk. Etikettfiltesten bekrefter avkodingen, men erstatter ikke kameratest.
 - Butikkens etikettsett og akseptansemål fra prosjektintroduksjonen er ikke målt ennå.
 - Fysisk A3-utskrift ved 100 %, lest med både telefon og håndskanner.
-- Automatisk Obs BYGG-oppslag, produktbilder og delt arbeidsgruppearkiv inngår ikke i førsteutgaven. Varenavn fylles inn manuelt, og lapper er private per konto.
+- Delt arbeidsgruppearkiv inngår ikke i førsteutgaven; lapper er private per konto. Produktbilder vises i grensesnittet, og PDF-en er fortsatt tekst/vektor uten produktbilder.
 - Lengre nettutfall må prøves på faktiske telefoner. UI viser serverbekreftet lagring, nettfeil og konflikter. Ulagrede endringer holdes i den åpne siden; lukk ikke fanen under nettutfall.
 
 Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
+
+## Tillegg: varenavn og produktbilde fra Obs BYGG
+
+- Ti faktiske eksempel-EAN-er er slått opp via nettbutikkens offentlige autocomplete og verifisert mot riktig SKU/variant i produktsidens JSON-LD. Alle ti bilde-URL-er svarte med HTTP 200 og bildeinnhold. Lokale samlede oppslag inkludert bilde-HEAD tok ca. 0,4–0,9 sekunder per vare i denne prøven; dette er ikke en lovnad om mobil/nettverkshastighet.
+- Egne tester dekker feil variant, pakningsstørrelse, motstridende identiteter, manglende bilde, ugyldig JSON-LD, utrygge bildeadresser, ingen treff, kildefeil, flere treff og normalisering av norske tegn før utskrift.
+- Verifisert produktmetadata følger kontolagring og låst revisjon, mens manuelt varenavn beholdes. Dette er testet mot ekte HTTP-ruter på preview og gjennom jobbverktoy.no.
+- Mobilgrensesnittet er prøvd med virkelig varenavn/bilde, tomt antall, eget navn skrevet før oppslaget kom tilbake, lagring og gjenåpning. Produktbildet var lastet og fulgte den lagrede linjen.
+- Ved ukjent EAN eller timeout beholdes manuell registrering. Ingen test skal tolkes som at hele Obs BYGG-sortimentet er tilgjengelig på nett.

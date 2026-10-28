@@ -12,7 +12,7 @@ Versjon 2.0 · 28. oktober 2026 · Norsk bokmål
 - Lappen beholdes frem til utskrift. Brukeren markerer **Markér som skrevet ut**, siden nettleseren ikke kan bekrefte fysisk utskrift. Slettefristen er da sju dager. Etter fristen er lappen utilgjengelig; daglig opprydding sletter lapp og revisjoner fysisk. Gjenåpning for redigering avbryter fristen frem til ny utskriftsbekreftelse.
 - Flere varelinjer gir automatisk flere A3-sider. **Fordel sidene balansert**, for eksempel seks varer på hver side ved tolv vanlige varelinjer, fremfor ti små på første side og to på andre. Mål innholdet, behold varerekkefølgen og bruk færrest mulig sider innenfor lesbarhets- og strekkodekravene.
 - Ledig plass brukes til større tekst, antall og varefelt, også på hver side av en flersidig lapp.
-- ZXing-C++ via `zxing-wasm` er valgt gratis skannermotor. I førsteutgaven registreres varenavn manuelt; automatisk Obs BYGG-oppslag kommer senere.
+- ZXing-C++ via `zxing-wasm` er valgt gratis skannermotor. Under testingen hentes varenavn, variant og bilde fra Obs BYGG ved verifisert EAN-treff. Manuell registrering beholdes. Bildet vises ved registrering og i varelisten; PDF-en bruker foreløpig tekst og den genererte strekkoden.
 
 
 - Appnavn/arbeidstittel: **Merkelapp**.

@@ -34,6 +34,8 @@ import {
   type Line,
 } from "@/lib/model";
 import { Scanner } from "./scanner";
+import { ProductPhoto } from "./product-photo";
+import type { Product } from "@/lib/products";
 const API = "/merkelapp/api";
 type Layout = {
   pages: {
@@ -109,6 +111,14 @@ export function Workspace() {
     [removed, setRemoved] = useState<{ line: Line; index: number } | null>(
       null,
     );
+  const [product, setProduct] = useState<Product | null>(null),
+    [lookupState, setLookupState] = useState<
+      "idle" | "loading" | "found" | "not_found" | "unavailable" | "ambiguous"
+    >("idle"),
+    [lookupMessage, setLookupMessage] = useState(""),
+    [lookupRetry, setLookupRetry] = useState(0),
+    [productChoices, setProductChoices] = useState<Product[]>([]);
+  const nameTouched = useRef(false);
   const [pdfState, setPdfState] = useState(""),
     [filter, setFilter] = useState<"all" | "draft" | "locked">("all");
   const current = useRef<Sheet | null>(null),
@@ -323,7 +333,75 @@ export function Workspace() {
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!form || !validEan(ean)) {
+      setLookupState("idle");
+      setProduct(null);
+      return;
+    }
+    const stored = bodyRef.current.lines.find((l) => l.ean === ean)?.product;
+    if (stored && lookupRetry === 0) {
+      setProduct(stored);
+      setLookupState("found");
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    setLookupState("loading");
+    setProductChoices([]);
+    setLookupMessage("");
+    const timer = setTimeout(() => {
+      api("/products", {
+        method: "POST",
+        body: JSON.stringify({ ean }),
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setLookupState(result.status);
+          if (result.status === "found") {
+            setProduct(result.product);
+            if (!nameTouched.current) setName(result.product.name);
+            setTimeout(() => {
+              if (!cancelled && !nameTouched.current)
+                quantityInput.current?.focus();
+            }, 50);
+          } else if (result.status === "ambiguous")
+            setProductChoices(result.products);
+          else if (result.status === "unavailable")
+            setLookupMessage(result.message);
+          if (
+            (result.status === "not_found" ||
+              result.status === "unavailable") &&
+            !nameTouched.current
+          )
+            nameInput.current?.focus();
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setLookupState("unavailable");
+            setLookupMessage(e.message);
+          }
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form, ean, lookupRetry]);
+  function chooseProduct(selected: Product) {
+    setProduct(selected);
+    setLookupState("found");
+    if (!nameTouched.current) setName(selected.name);
+    quantityInput.current?.focus();
+  }
   function openForm(code = "", line?: Line) {
+    nameTouched.current = Boolean(line);
+    setProduct(line?.product || null);
+    setLookupState(line?.product ? "found" : "idle");
+    setLookupRetry(0);
+    setProductChoices([]);
     setEan(line?.ean || code);
     setName(line?.name || "");
     setQty(line ? String(line.quantity) : "");
@@ -334,14 +412,16 @@ export function Workspace() {
     setScanner(false);
     setTimeout(() => {
       if (line) quantityInput.current?.focus();
-      else if (code) nameInput.current?.focus();
+      else if (code) quantityInput.current?.focus();
     }, 50);
   }
   function read(code: string) {
     const previous = draft.lines.find((l) => l.ean === code);
     openForm(code);
     if (previous) {
+      nameTouched.current = true;
       setName(previous.name);
+      setProduct(previous.product || null);
       setDuplicate(previous);
     }
   }
@@ -365,6 +445,7 @@ export function Workspace() {
       setDuplicate(existing);
       return;
     }
+    const productData = product?.ean === ean ? product : undefined;
     let lines: Line[];
     if (existing && !editId) {
       const n = mode === "add" ? existing.quantity + Number(qty) : Number(qty);
@@ -373,7 +454,14 @@ export function Workspace() {
         return;
       }
       lines = draft.lines.map((l) =>
-        l.id === existing.id ? { ...l, name: name.trim(), quantity: n } : l,
+        l.id === existing.id
+          ? {
+              ...l,
+              name: name.trim(),
+              quantity: n,
+              product: productData || l.product,
+            }
+          : l,
       );
     } else if (editId) {
       if (existing) {
@@ -384,7 +472,13 @@ export function Workspace() {
       }
       lines = draft.lines.map((l) =>
         l.id === editId
-          ? { ...l, ean, name: name.trim(), quantity: Number(qty) }
+          ? {
+              ...l,
+              ean,
+              name: name.trim(),
+              quantity: Number(qty),
+              product: productData,
+            }
           : l,
       );
     } else
@@ -395,6 +489,7 @@ export function Workspace() {
           ean,
           name: name.trim(),
           quantity: Number(qty),
+          ...(productData ? { product: productData } : {}),
         },
       ];
     setDraft({ ...draft, lines });
@@ -975,6 +1070,12 @@ export function Workspace() {
                             <span className="line-number">
                               {String(i + 1).padStart(2, "0")}
                             </span>
+                            {line.product?.imageUrl && (
+                              <ProductPhoto
+                                src={line.product.imageUrl}
+                                name={line.name}
+                              />
+                            )}
                             <div className="line-copy">
                               <strong>{line.name}</strong>
                               <span>{line.ean}</span>
@@ -1149,9 +1250,11 @@ export function Workspace() {
                         );
                         if (l) {
                           setDuplicate(l);
+                          nameTouched.current = true;
                           setName(l.name);
+                          setProduct(l.product || null);
                         }
-                        nameInput.current?.focus();
+                        quantityInput.current?.focus();
                       } else
                         setFormError("Kontroller EAN og kontrollsifferet.");
                     }
@@ -1159,6 +1262,9 @@ export function Workspace() {
                   onChange={(e) => {
                     setEan(e.target.value.replace(/\s/g, ""));
                     setDuplicate(null);
+                    setProduct(null);
+                    setLookupRetry(0);
+                    if (!nameTouched.current) setName("");
                   }}
                   onBlur={() => {
                     const l = draft.lines.find(
@@ -1166,18 +1272,96 @@ export function Workspace() {
                     );
                     if (l) {
                       setDuplicate(l);
+                      nameTouched.current = true;
                       if (!name) setName(l.name);
                     }
                   }}
                 />
               </label>
-              <div className="manual-notice">
-                <Tag size={16} />
-                <span>
-                  Automatisk produktoppslag kommer senere. Oppgi varenavnet selv
-                  i denne utgaven.
-                </span>
+              <div
+                className={`lookup-panel ${lookupState}`}
+                role="status"
+                aria-live="polite"
+              >
+                {lookupState === "loading" ? (
+                  <>
+                    <LoaderCircle size={17} className="spin" />
+                    <span>
+                      Kode lest. Henter varenavn og bilde fra Obs BYGG …
+                    </span>
+                  </>
+                ) : lookupState === "found" && product ? (
+                  <>
+                    <ProductPhoto
+                      src={product.imageUrl}
+                      name={product.name}
+                      large
+                    />
+                    <div className="lookup-product-copy">
+                      <strong>{product.name}</strong>
+                      <span>Hentet fra Obs BYGG · EAN verifisert</span>
+                      <a
+                        href={product.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Se produkt og variant ↗
+                      </a>
+                    </div>
+                  </>
+                ) : lookupState === "ambiguous" ? (
+                  <div className="lookup-choices">
+                    <strong>Flere sikre EAN-treff. Velg riktig produkt:</strong>
+                    {productChoices.map((choice) => (
+                      <button
+                        key={choice.sourceUrl + choice.name}
+                        type="button"
+                        onClick={() => chooseProduct(choice)}
+                      >
+                        <ProductPhoto
+                          src={choice.imageUrl}
+                          name={choice.name}
+                        />
+                        <span>{choice.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <Tag size={17} />
+                    <span>
+                      {lookupState === "not_found"
+                        ? "Fant ikke et sikkert EAN-treff hos Obs BYGG. Skriv inn varenavnet selv."
+                        : lookupState === "unavailable"
+                          ? lookupMessage ||
+                            "Produktoppslaget er utilgjengelig. Du kan fortsette manuelt."
+                          : "Skriv eller skann en gyldig EAN for å hente navn og bilde."}
+                    </span>
+                  </>
+                )}
               </div>
+              {(lookupState === "not_found" ||
+                lookupState === "unavailable") && (
+                <button
+                  className="text-button lookup-retry"
+                  type="button"
+                  onClick={() => setLookupRetry((n) => n + 1)}
+                >
+                  Prøv produktoppslaget igjen
+                </button>
+              )}
+              {lookupState === "found" && product && name !== product.name && (
+                <button
+                  className="text-button lookup-retry"
+                  type="button"
+                  onClick={() => {
+                    nameTouched.current = true;
+                    setName(product.name);
+                  }}
+                >
+                  Bruk varenavnet fra Obs BYGG
+                </button>
+              )}
               <label>
                 Varenavn
                 <input
@@ -1187,7 +1371,10 @@ export function Workspace() {
                   maxLength={500}
                   placeholder="Fullt navn og variant"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    nameTouched.current = true;
+                    setName(e.target.value);
+                  }}
                 />
               </label>
               <label>
