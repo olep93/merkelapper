@@ -79,3 +79,9 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Ny knapp «Oppdater PDF» henter siste lagrede lapp fra kontoen, lagrer eventuelle lokale endringer først og låser et oppdatert utkast som ny utskriftsrevisjon. Versjonskontroll hindrer overskriving ved samtidige endringer.
 - PDF-en hentes uten mellomlagring. Knappen gjenbruker en tidligere åpnet PDF-fane når den fremdeles er tilgjengelig, og åpner ellers en ny fane eller laster ned filen dersom nettleseren blokkerer popup.
 - TypeScript, alle 21 eksisterende tester og produksjonsbygg bestått. Produksjonsdeploy bekreftet Ready. PDF-fanegjenbruk er ikke manuelt kontrollert i alle nettlesere.
+
+## Automatisk synkronisering mellom PC og mobil
+
+- Synlig app henter lappelisten hvert 5. sekund og umiddelbart ved fokus, synlig fane eller gjenopprettet nett. Skjulte faner pauser intervallets nettverkskall. En manuell «Oppdater lapper»-knapp er også tilgjengelig.
+- Oppdaterer valgt lapp fra kontoen bare når lokale endringer er lagret og ingen vareregistrering/skanner er åpen. Svar som kommer etter et lokalt lagringskall eller bytte av lapp forkastes. Nye lapper velges ikke automatisk.
+- Nettfeil vises ved oppdateringsknappen, og neste intervall forsøker igjen. TypeScript, 21 eksisterende tester og produksjonsbygg bestått. Samtidig bruk av to fysiske enheter er ikke manuelt testet i denne runden.

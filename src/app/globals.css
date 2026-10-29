@@ -1842,3 +1842,16 @@ input:disabled {
   width: 100%;
   text-align: center;
 }
+
+.sheet-sync {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #626970;
+}
+.sheet-sync .icon-button {
+  flex-shrink: 0;
+}

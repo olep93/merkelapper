@@ -126,6 +126,11 @@ export function Workspace() {
   const nameTouched = useRef(false);
   const [pdfState, setPdfState] = useState(""),
     [filter, setFilter] = useState<"all" | "draft" | "locked" | "trash">("all");
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState("");
+  const syncingRef = useRef(false);
+  const interactionRef = useRef({ busy, form, scanner });
+  interactionRef.current = { busy, form, scanner };
   const pdfWindowRef = useRef<Window | null>(null);
   const current = useRef<Sheet | null>(null),
     bodyRef = useRef(draft),
@@ -155,6 +160,69 @@ export function Workspace() {
       }
     })();
   }, []);
+  async function syncSheets() {
+    if (syncingRef.current || working.current || interactionRef.current.busy)
+      return;
+    const selected = current.current;
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      const list: Sheet[] = await api("/sheets?include_deleted=1");
+      // A save or sheet switch during the request takes precedence over this snapshot.
+      if (
+        working.current ||
+        interactionRef.current.busy ||
+        current.current?.id !== selected?.id ||
+        current.current?.version !== selected?.version
+      )
+        return;
+      setSheets(list);
+      setSyncError("");
+      const editing =
+        interactionRef.current.form ||
+        interactionRef.current.scanner ||
+        (selected && JSON.stringify(bodyRef.current) !== saved.current);
+      if (!selected || editing) return;
+      const latest = list.find((s) => s.id === selected.id);
+      if (!latest) {
+        current.current = null;
+        saved.current = "";
+        setSheet(null);
+        setDraft(emptyBody());
+        setPreview(false);
+        setPdfState("");
+      } else if (latest.version !== selected.version) {
+        accept(latest);
+        saved.current = JSON.stringify(latest.body);
+        setDraft(latest.body);
+        setRemoved(null);
+        setConflict(false);
+        setError("");
+        setPdfState("");
+      }
+    } catch {
+      setSyncError("Kunne ikke oppdatere. Prøver igjen automatisk.");
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }
+  useEffect(() => {
+    if (loading || gate) return;
+    const syncVisible = () => {
+      if (document.visibilityState === "visible") void syncSheets();
+    };
+    const timer = setInterval(syncVisible, 5000);
+    document.addEventListener("visibilitychange", syncVisible);
+    window.addEventListener("focus", syncVisible);
+    window.addEventListener("online", syncVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", syncVisible);
+      window.removeEventListener("focus", syncVisible);
+      window.removeEventListener("online", syncVisible);
+    };
+  }, [loading, gate]);
   const dirty = Boolean(sheet) && JSON.stringify(draft) !== saved.current;
   useEffect(() => {
     const fn = (e: BeforeUnloadEvent) => {
@@ -687,6 +755,20 @@ export function Workspace() {
                 disabled={busy}
               >
                 <Plus size={19} /> Ny lapp
+              </button>
+            </div>
+            <div className="sheet-sync">
+              <span role="status">
+                {syncError || "Oppdateres automatisk hvert 5. sekund"}
+              </span>
+              <button
+                className="icon-button"
+                onClick={() => syncSheets()}
+                aria-label="Oppdater lapper"
+                title="Oppdater lapper nå"
+                disabled={syncing || busy}
+              >
+                <RefreshCw size={17} className={syncing ? "spin" : ""} />
               </button>
             </div>
             <div className="search-field">
