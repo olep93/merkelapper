@@ -13,6 +13,7 @@ import {
   LockKeyhole,
   Plus,
   Printer,
+  RefreshCw,
   ScanLine,
   Search,
   Tag,
@@ -125,6 +126,7 @@ export function Workspace() {
   const nameTouched = useRef(false);
   const [pdfState, setPdfState] = useState(""),
     [filter, setFilter] = useState<"all" | "draft" | "locked" | "trash">("all");
+  const pdfWindowRef = useRef<Window | null>(null);
   const current = useRef<Sheet | null>(null),
     bodyRef = useRef(draft),
     working = useRef(false),
@@ -540,13 +542,46 @@ export function Workspace() {
       setError((e as Error).message);
     }
   }
-  async function openPdf() {
-    if (!sheet || busy) return;
-    const pdfWindow = window.open("about:blank", "_blank");
+  async function openPdf(update = false) {
+    if (!sheet || busy || working.current) return;
+    const id = sheet.id;
+    const previousWindow = pdfWindowRef.current;
+    const pdfWindow =
+      update && previousWindow && !previousWindow.closed
+        ? previousWindow
+        : window.open("about:blank", "_blank");
+    const newWindow = pdfWindow !== previousWindow;
+    if (dirty && !(await persist(bodyRef.current))) {
+      if (newWindow) pdfWindow?.close();
+      return;
+    }
+    working.current = true;
+    setBusy(true);
     setPdfState("PDF klargjøres …");
     setError("");
     try {
-      const response = await fetch(`${API}/sheets/${sheet.id}/pdf`, {
+      let latest: Sheet = await api(`/sheets/${id}`);
+      if (latest.deleted_at) throw new Error("Lappen ligger i papirkurven.");
+      if (update && latest.state === "draft") {
+        latest = await api(`/sheets/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "lock",
+            version: latest.version,
+            operation: crypto.randomUUID(),
+          }),
+        });
+      }
+      accept(latest);
+      saved.current = JSON.stringify(latest.body);
+      setDraft(latest.body);
+      setConflict(false);
+      setPreview(true);
+      if (latest.state !== "locked")
+        throw new Error(
+          "Lappen er åpnet for redigering. Velg Oppdater PDF for å låse og hente en ny utskrift.",
+        );
+      const response = await fetch(`${API}/sheets/${id}/pdf`, {
         cache: "no-store",
       });
       if (!response.ok) {
@@ -556,12 +591,13 @@ export function Workspace() {
       const blob = await response.blob(),
         url = URL.createObjectURL(blob);
       if (pdfWindow) {
+        pdfWindowRef.current = pdfWindow;
         pdfWindow.opener = null;
         pdfWindow.location.href = url;
       } else {
         const a = document.createElement("a");
         a.href = url;
-        a.download = `merkelapp-${sheet.id.slice(0, 8)}-r${sheet.revision}.pdf`;
+        a.download = `merkelapp-${id.slice(0, 8)}-r${latest.revision}.pdf`;
         a.click();
       }
       setTimeout(() => URL.revokeObjectURL(url), 120000);
@@ -574,9 +610,12 @@ export function Workspace() {
           : "PDF klar. Velg A3 og faktisk størrelse / 100 %.",
       );
     } catch (e) {
-      pdfWindow?.close();
+      if (newWindow) pdfWindow?.close();
       setPdfState("PDF-feil – prøv igjen.");
       setError((e as Error).message);
+    } finally {
+      working.current = false;
+      setBusy(false);
     }
   }
   const trashed = Boolean(sheet?.deleted_at);
@@ -1202,6 +1241,16 @@ export function Workspace() {
                     </p>
                   </div>
                   <div className="footer-actions">
+                    {!trashed && (
+                      <button
+                        className="button secondary"
+                        onClick={() => openPdf(true)}
+                        disabled={busy || conflict || (dirty && !lineCount)}
+                        title="Henter siste lagrede endringer, låser lappen og oppdaterer PDF-en"
+                      >
+                        <RefreshCw size={17} /> Oppdater PDF
+                      </button>
+                    )}
                     {trashed ? (
                       <button
                         className="button primary"
@@ -1221,7 +1270,7 @@ export function Workspace() {
                         </button>
                         <button
                           className="button primary"
-                          onClick={openPdf}
+                          onClick={() => openPdf()}
                           disabled={busy || pdfState === "PDF klargjøres …"}
                         >
                           <Printer size={18} /> Åpne PDF
@@ -1248,8 +1297,9 @@ export function Workspace() {
                         {pdfState || "Lappen er låst og klar for PDF."}
                       </strong>
                       <p>
-                        Har du skrevet ut? Bekreft under for å starte
-                        nedtellingen til sletting.
+                        Endret fra en annen enhet? Velg Oppdater PDF for å hente
+                        siste endringer. Har du skrevet ut? Bekreft under for å
+                        starte nedtellingen til sletting.
                       </p>
                     </div>
                     <button

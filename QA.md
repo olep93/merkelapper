@@ -73,3 +73,9 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Kolonneoverskriftene er sentrert over innholdet og økt fra 11 til 14 punkter. EAN er også sentrert i tekstfeltet på tettere ark.
 - Visuelt kontrollert rendret PDF med 1, 2, 3 og 10 faktiske Obs BYGG-produkter (testantall). Ingen avkuttede navn, bilder eller EAN; bildene bruker ledig høyde uten å presse teksten sammen.
 - 21 automatiske tester og TypeScript-kontroll bestått; ny test kontrollerer bildestørrelse og samlet plass for bilde, navn og EAN.
+
+## Oppdater PDF fra PC
+
+- Ny knapp «Oppdater PDF» henter siste lagrede lapp fra kontoen, lagrer eventuelle lokale endringer først og låser et oppdatert utkast som ny utskriftsrevisjon. Versjonskontroll hindrer overskriving ved samtidige endringer.
+- PDF-en hentes uten mellomlagring. Knappen gjenbruker en tidligere åpnet PDF-fane når den fremdeles er tilgjengelig, og åpner ellers en ny fane eller laster ned filen dersom nettleseren blokkerer popup.
+- TypeScript, alle 21 eksisterende tester og produksjonsbygg bestått. Produksjonsdeploy bekreftet Ready. PDF-fanegjenbruk er ikke manuelt kontrollert i alle nettlesere.
