@@ -92,6 +92,7 @@ export function Workspace() {
   const [account, setAccount] = useState<{
       name: string;
       email: string;
+      creatorName: string;
     } | null>(null),
     [loading, setLoading] = useState(true),
     [gate, setGate] = useState("");
@@ -1070,11 +1071,14 @@ export function Workspace() {
                               <strong>VARETELLING</strong>
                               <b>{dateLabel(draft.date)}</b>
                             </div>
-                            {draft.location && (
-                              <div className="paper-location">
-                                {draft.location}
-                              </div>
-                            )}
+                            <div className="paper-meta">
+                              <span>{draft.location}</span>
+                              <strong>
+                                {account?.creatorName
+                                  ? `Laget av ${account.creatorName}`
+                                  : ""}
+                              </strong>
+                            </div>
                             <div
                               className="paper-column-head"
                               style={{

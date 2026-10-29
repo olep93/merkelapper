@@ -85,3 +85,9 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Synlig app henter lappelisten hvert 5. sekund og umiddelbart ved fokus, synlig fane eller gjenopprettet nett. Skjulte faner pauser intervallets nettverkskall. En manuell «Oppdater lapper»-knapp er også tilgjengelig.
 - Oppdaterer valgt lapp fra kontoen bare når lokale endringer er lagret og ingen vareregistrering/skanner er åpen. Svar som kommer etter et lokalt lagringskall eller bytte av lapp forkastes. Nye lapper velges ikke automatisk.
 - Nettfeil vises ved oppdateringsknappen, og neste intervall forsøker igjen. TypeScript, 21 eksisterende tester og produksjonsbygg bestått. Samtidig bruk av to fysiske enheter er ikke manuelt testet i denne runden.
+
+## Navn på den som laget lappen
+
+- Forhåndsvisning og hver PDF-side viser «Laget av Fornavn E.» øverst ved datoen. Forkortelsen hentes på serveren fra kontoens profilnavn; klienten sender ikke utskriftsnavnet.
+- Merkelapper er personlige. PDF-ruten kontrollerer eksplisitt at lappen tilhører innlogget konto før den bruker kontoprofilen, så eksisterende lapper får også navn uten å endre lagrede varelinjer/revisjoner.
+- Kontrollert de fire etterspurte profilforkortelsene, automatisk navnetest, rendret PDF med «Laget av Ole K.» og 22 beståtte tester samt TypeScript-kontroll.

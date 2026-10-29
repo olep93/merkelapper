@@ -73,7 +73,7 @@ export async function makePdf(
   body: SheetBody,
   id: string,
   revision: number,
-  options: { imageLoader?: PrintImageLoader } = {},
+  options: { imageLoader?: PrintImageLoader; creatorName?: string } = {},
 ) {
   const { doc, font, bold } = await fonts();
   const pages = planPages(body.lines, font, bold);
@@ -113,13 +113,24 @@ export async function makePdf(
       size: 26,
       font: bold,
     });
+    const author = options.creatorName
+      ? printable(`Laget av ${options.creatorName}`, bold)
+      : "";
+    const authorWidth = bold.widthOfTextAtSize(author, 14);
+    if (author)
+      page.drawText(author, {
+        x: PAGE_W - MARGIN - authorWidth,
+        y: PAGE_H - MARGIN - 49,
+        size: 14,
+        font: bold,
+      });
     if (body.location)
       page.drawText(printable(body.location, font), {
         x: MARGIN,
         y: PAGE_H - MARGIN - 49,
         size: 12,
         font,
-        maxWidth: PAGE_W - 2 * MARGIN,
+        maxWidth: PAGE_W - 2 * MARGIN - (author ? authorWidth + 20 : 0),
       });
     const tableWidth = PAGE_W - 2 * MARGIN,
       qtyX = MARGIN + layout.nameWidth,

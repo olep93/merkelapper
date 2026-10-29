@@ -1855,3 +1855,22 @@ input:disabled {
 .sheet-sync .icon-button {
   flex-shrink: 0;
 }
+
+.paper-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2cqw;
+  margin-bottom: 1.2cqw;
+  font-size: 1.53cqw;
+}
+.paper-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paper-meta strong {
+  flex-shrink: 0;
+  font-size: 1.78cqw;
+}

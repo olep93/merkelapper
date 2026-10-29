@@ -1,3 +1,4 @@
+import { creatorName } from "@/lib/creator-name";
 import { requireUser, failure, ApiError } from "@/lib/supabase";
 import { bodySchema } from "@/lib/model";
 import { makePdf } from "@/lib/pdf";
@@ -7,12 +8,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { db } = await requireUser();
+    const { db, user } = await requireUser();
     const { id } = await params;
     const { data: sheet } = await db
       .from("merkelapp_sheets")
       .select("id,state,revision,deleted_at")
       .eq("id", id)
+      .eq("owner_id", user.id)
       .single();
     if (!sheet || sheet.deleted_at)
       throw new ApiError(
@@ -32,6 +34,7 @@ export async function GET(
       bodySchema.parse(revision.body),
       id,
       sheet.revision,
+      { creatorName: creatorName(user) },
     );
     return new Response(Buffer.from(bytes), {
       headers: {
