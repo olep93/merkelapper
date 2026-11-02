@@ -912,7 +912,7 @@ input:disabled {
 .paper-footer {
   font-size: 6px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 12px;
   color: #777;
 }

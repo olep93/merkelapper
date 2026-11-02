@@ -1165,12 +1165,6 @@ export function Workspace() {
                             </div>
                             <div className="paper-footer">
                               <span>
-                                {sheet.id.slice(0, 8).toUpperCase()} ·{" "}
-                                {locked
-                                  ? `Revisjon ${sheet.revision}`
-                                  : "Utkast"}
-                              </span>
-                              <span>
                                 Side {i + 1} av {layout.pages.length}
                               </span>
                             </div>

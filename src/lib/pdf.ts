@@ -1,4 +1,4 @@
-import { rgb, type PDFImage } from "pdf-lib";
+import { PrintScaling, rgb, type PDFImage } from "pdf-lib";
 import { loadPrintImages, type PrintImageLoader } from "./print-images";
 import {
   fonts,
@@ -94,6 +94,10 @@ export async function makePdf(
   }
   doc.setTitle(`Merkelapp ${id.slice(0, 8)} - revisjon ${revision}`);
   doc.setCreator("Jobbverktøy - Merkelapp");
+  // Ask the print dialog for paper matching the A3 page at 100 %. Honoured per PDF reader and printer.
+  const viewerPrefs = doc.catalog.getOrCreateViewerPreferences();
+  viewerPrefs.setPickTrayByPDFSize(true);
+  viewerPrefs.setPrintScaling(PrintScaling.None);
   for (const [pi, layout] of pages.entries()) {
     const page = doc.addPage([PAGE_W, PAGE_H]);
     const black = rgb(0, 0, 0),
@@ -291,10 +295,6 @@ export async function makePdf(
       });
       y = bottom;
     }
-    page.drawText(
-      `Lapp ${id.slice(0, 8).toUpperCase()}  |  Revisjon ${revision}  |  A3 - faktisk størrelse / 100 %`,
-      { x: MARGIN, y: MARGIN + 7, size: 9, font, color: gray },
-    );
     const p = `Side ${pi + 1} av ${pages.length}`;
     page.drawText(p, {
       x: PAGE_W - MARGIN - font.widthOfTextAtSize(p, 10),
