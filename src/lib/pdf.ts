@@ -98,6 +98,7 @@ export async function makePdf(
     const page = doc.addPage([PAGE_W, PAGE_H]);
     const black = rgb(0, 0, 0),
       gray = rgb(0.35, 0.35, 0.35),
+      eanColor = rgb(0.043, 0.239, 0.569),
       lineColor = rgb(0.7, 0.7, 0.7);
     page.drawText("VARETELLING", {
       x: MARGIN,
@@ -244,11 +245,11 @@ export async function makePdf(
       page.drawText(r.line.ean, {
         x:
           textX +
-          (textWidth - bold.widthOfTextAtSize(r.line.ean, r.eanSize)) / 2,
+          (textWidth - font.widthOfTextAtSize(r.line.ean, r.eanSize)) / 2,
         y: ty + r.nameLineHeight - r.nameDescent - 5 - r.eanAscent,
         size: r.eanSize,
-        font: bold,
-        color: black,
+        font,
+        color: eanColor,
       });
       const q = String(r.line.quantity);
       page.drawText(q, {
