@@ -1807,8 +1807,8 @@ input:disabled {
   line-height: 1.12;
 }
 .paper-product-text > span {
-  font-weight: 700;
-  color: #000;
+  font-weight: 400;
+  color: #0b3d91;
 }
 
 /* Lines are measured by the PDF layout; never break them again in the browser. */
