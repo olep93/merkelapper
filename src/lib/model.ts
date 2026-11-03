@@ -47,10 +47,26 @@ export const lineSchema = z
     name: z.string().trim().min(1, "Skriv inn varenavn").max(500),
     quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     product: productSchema.optional(),
+    parts: z
+      .array(
+        z.object({
+          source: z.number().int().min(0),
+          quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+        }),
+      )
+      .min(1)
+      .max(200)
+      .optional(),
   })
   .refine(
     (line) => !line.product || line.product.ean === line.ean,
     "Produktet må tilhøre samme EAN som varelinjen.",
+  )
+  .refine(
+    (line) =>
+      !line.parts ||
+      line.parts.reduce((sum, p) => sum + p.quantity, 0) === line.quantity,
+    "Utregningen må stemme med totalen.",
   );
 export const bodySchema = z
   .object({
@@ -58,6 +74,17 @@ export const bodySchema = z
     date: z.iso.date(),
     location: z.string().trim().max(120),
     lines: z.array(lineSchema).max(500),
+    kind: z.enum(["area", "merged"]).optional(),
+    sources: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string().max(100),
+          fingerprint: z.string().max(16),
+        }),
+      )
+      .max(200)
+      .optional(),
   })
   .superRefine((body, ctx) => {
     const ids = new Set<string>(),
@@ -67,6 +94,12 @@ export const bodySchema = z
         ctx.addIssue({
           code: "custom",
           message: "Samme EAN kan bare ha én varelinje.",
+          path: ["lines", i],
+        });
+      if (line.parts?.some((p) => p.source >= (body.sources?.length || 0)))
+        ctx.addIssue({
+          code: "custom",
+          message: "Utregningen viser til en ukjent liste.",
           path: ["lines", i],
         });
       ids.add(line.id);

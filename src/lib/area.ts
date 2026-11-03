@@ -1,0 +1,99 @@
+import { dateLabel, osloDate, type Line, type Sheet, type SheetBody } from "./model";
+type Source = Pick<Sheet, "id" | "body">;
+export const AREA_ROWS_PER_PAGE = 25,
+  AREA_EAN_SIZE = 10,
+  AREA_CALC_SIZE = 7.5;
+export function sheetTitle(body: SheetBody) {
+  return body.title || `Lapp ${dateLabel(body.date)}`;
+}
+const titleBase = (title: string) => title.replace(/\s*\d+$/, "").trim();
+// Suggests the next name in a numbered series: "Skruer 3" gives "Skruer 4".
+export function nextAreaTitle(sheets: Sheet[]) {
+  const areas = sheets.filter((s) => s.body.kind === "area" && !s.deleted_at);
+  const latest = areas.reduce<Sheet | null>(
+    (a, b) => (!a || b.created_at > a.created_at ? b : a),
+    null,
+  );
+  if (!latest || !/\d+$/.test(latest.body.title)) return "";
+  const base = titleBase(latest.body.title);
+  const numbers = areas
+    .filter((s) => titleBase(s.body.title) === base)
+    .map((s) => Number(s.body.title.match(/\d+$/)?.[0] || 0));
+  return `${base} ${Math.max(...numbers) + 1}`.trim().slice(0, 100);
+}
+export function mergedTitle(titles: string[]) {
+  const base = titleBase(titles[0] || "");
+  return base && titles.every((t) => titleBase(t) === base)
+    ? `${base} samlet`.slice(0, 100)
+    : "Sammenslått liste";
+}
+// Detects later count changes in a source. Locking and printing leave it unchanged.
+export function countFingerprint(body: SheetBody) {
+  let hash = 5381;
+  const text = body.lines
+    .map((l) => `${l.ean}:${l.quantity}`)
+    .sort()
+    .join(",");
+  for (let i = 0; i < text.length; i++)
+    hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
+  return hash.toString(16);
+}
+export function mergeSheets(sources: Source[], date = osloDate()): SheetBody {
+  const ordered = [...sources].sort((a, b) =>
+    sheetTitle(a.body).localeCompare(sheetTitle(b.body), "nb", {
+      numeric: true,
+    }),
+  );
+  const lines = new Map<string, Line & { parts: NonNullable<Line["parts"]> }>();
+  ordered.forEach((sheet, source) => {
+    for (const line of sheet.body.lines) {
+      const merged = lines.get(line.ean);
+      if (!merged) {
+        lines.set(line.ean, {
+          ...line,
+          id: crypto.randomUUID(),
+          parts: [{ source, quantity: line.quantity }],
+        });
+        continue;
+      }
+      merged.quantity += line.quantity;
+      if (!Number.isSafeInteger(merged.quantity))
+        throw new Error(`Summen for ${line.name} er for stor.`);
+      merged.parts.push({ source, quantity: line.quantity });
+      merged.product ??= line.product;
+    }
+  });
+  if (lines.size > 500)
+    throw new Error(
+      "Sammenslåingen gir over 500 ulike varer. Velg færre lister.",
+    );
+  const locations = new Set(ordered.map((s) => s.body.location));
+  return {
+    title: mergedTitle(ordered.map((s) => sheetTitle(s.body))),
+    date,
+    location: locations.size === 1 ? ordered[0].body.location : "",
+    kind: "merged",
+    sources: ordered.map((s) => ({
+      id: s.id,
+      title: sheetTitle(s.body),
+      fingerprint: countFingerprint(s.body),
+    })),
+    lines: [...lines.values()],
+  };
+}
+export function changedSources(body: SheetBody, sheets: Sheet[]) {
+  return (body.sources || []).filter((source) => {
+    const sheet = sheets.find((s) => s.id === source.id);
+    return (
+      sheet &&
+      !sheet.deleted_at &&
+      countFingerprint(sheet.body) !== source.fingerprint
+    );
+  });
+}
+// A calculation only adds information when more than one list holds the item.
+export function calculation(line: Line) {
+  return line.parts && line.parts.length > 1
+    ? line.parts.map((p) => p.quantity).join(" + ")
+    : "";
+}

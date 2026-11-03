@@ -91,3 +91,13 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Forhåndsvisning og hver PDF-side viser «Laget av Fornavn E.» øverst ved datoen. Forkortelsen hentes på serveren fra kontoens profilnavn; klienten sender ikke utskriftsnavnet.
 - Merkelapper er personlige. PDF-ruten kontrollerer eksplisitt at lappen tilhører innlogget konto før den bruker kontoprofilen, så eksisterende lapper får også navn uten å endre lagrede varelinjer/revisjoner.
 - Kontrollert de fire etterspurte profilforkortelsene, automatisk navnetest, rendret PDF med «Laget av Ole K.» og 22 beståtte tester samt TypeScript-kontroll.
+
+## Tillegg: områder med varer flere steder – 3. november 2026
+
+- Egne tester dekker summering, utregning, nullantall, for store summer, over 500 varer, feil utregning, varsel om endret kildeliste, 25 varer per ark, vekslende sider, lange navn og at bilder ikke lastes.
+- Grensesnittet er prøvd på desktop og ved 375 × 812 piksler med ekte klient, layout og PDF-kode, men med testdata i minnet. Sammenslåing er ikke kjørt mot den faktiske databasen eller gjennom innlogget portal.
+- Alle strekkoder på et ark med 25 rader er avkodet av ZXing i riktig rekkefølge ved 200 dpi.
+- Med skannerens innstillinger og utsnitt rundt én kode (med radene over og under) ble 25 koder lest ved 15 oppløsninger fra 120 til 400 dpi: 375 av 375 riktige, ingen feil.
+- Når hele A3-arket ble analysert samlet, ble alle koder funnet, men ZXing ga i tillegg enkelte feil koder ved noen oppløsninger (1 ved 300 dpi i en kontroll med 100 EAN-er over 11 oppløsninger, 1 ved 300 dpi på eksempelarket med 28 varer). Vanlige lapper ga ingen feil koder i samme kontroll. Dette er bilder av PDF-en, ikke kamera eller papir.
+- Gjenstår: fysisk A3-utskrift ved 100 %, lest med både telefon og håndskanner. Strekkodene er 9,7 mm høye mot 22,85 mm på vanlige lapper.
+

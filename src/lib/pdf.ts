@@ -1,15 +1,25 @@
-import { PrintScaling, rgb, type PDFImage } from "pdf-lib";
+import {
+  PrintScaling,
+  rgb,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+} from "pdf-lib";
 import { loadPrintImages, type PrintImageLoader } from "./print-images";
 import {
   fonts,
   planPages,
+  planAreaPages,
   printable,
   MM,
   PAGE_W,
   PAGE_H,
   MARGIN,
   CONTENT_TOP,
+  AREA_CONTENT_TOP,
+  AREA_ROW_HEIGHT,
 } from "./layout";
+import { AREA_CALC_SIZE, AREA_EAN_SIZE } from "./area";
 import { dateLabel, type SheetBody } from "./model";
 // EAN encoding tables. Bars are drawn directly as vectors at X=0.33mm.
 const L = [
@@ -69,12 +79,222 @@ export function eanBits(ean: string) {
     "101"
   );
 }
+function drawBars(
+  page: PDFPage,
+  bits: string,
+  x: number,
+  y: number,
+  height: number,
+  guardDrop: number,
+) {
+  const xDim = 0.33 * MM;
+  for (let i = 0; i < bits.length; i++)
+    if (bits[i] === "1") {
+      const guard =
+        i < 3 || i >= bits.length - 3 || Math.abs(i - bits.length / 2) < 2.5;
+      page.drawRectangle({
+        x: x + i * xDim,
+        y: y - (guard ? guardDrop : 0),
+        width: xDim,
+        height: height + (guard ? guardDrop : 0),
+        color: rgb(0, 0, 0),
+      });
+    }
+}
+function shortened(text: string, font: PDFFont, size: number, width: number) {
+  let result = printable(text, font);
+  if (font.widthOfTextAtSize(result, size) <= width) return result;
+  while (result && font.widthOfTextAtSize(result + "…", size) > width)
+    result = result.slice(0, -1);
+  return result.trimEnd() + "…";
+}
+function drawCentered(
+  page: PDFPage,
+  text: string,
+  x: number,
+  width: number,
+  y: number,
+  size: number,
+  font: PDFFont,
+  color = rgb(0, 0, 0),
+) {
+  page.drawText(text, {
+    x: x + (width - font.widthOfTextAtSize(text, size)) / 2,
+    y,
+    size,
+    font,
+    color,
+  });
+}
+async function makeAreaPdf(
+  body: SheetBody,
+  id: string,
+  revision: number,
+  creatorName?: string,
+) {
+  const { doc, font, bold } = await fonts();
+  const pages = planAreaPages(body.lines, font, bold);
+  doc.setTitle(`Merkelapp ${id.slice(0, 8)} - revisjon ${revision}`);
+  doc.setCreator("Jobbverktøy - Merkelapp");
+  const viewerPrefs = doc.catalog.getOrCreateViewerPreferences();
+  viewerPrefs.setPickTrayByPDFSize(true);
+  viewerPrefs.setPrintScaling(PrintScaling.None);
+  const eanColor = rgb(0.043, 0.239, 0.569),
+    lineColor = rgb(0.7, 0.7, 0.7),
+    tableWidth = PAGE_W - 2 * MARGIN;
+  for (const [pi, layout] of pages.entries()) {
+    const page = doc.addPage([PAGE_W, PAGE_H]);
+    const top = PAGE_H - MARGIN;
+    page.drawText("VARETELLING", { x: MARGIN, y: top - 28, size: 28, font: bold });
+    const date = dateLabel(body.date);
+    page.drawText(date, {
+      x: PAGE_W - MARGIN - bold.widthOfTextAtSize(date, 26),
+      y: top - 28,
+      size: 26,
+      font: bold,
+    });
+    const author = creatorName ? printable(`Laget av ${creatorName}`, bold) : "";
+    const authorWidth = author ? bold.widthOfTextAtSize(author, 14) : 0;
+    if (author)
+      page.drawText(author, {
+        x: PAGE_W - MARGIN - authorWidth,
+        y: top - 49,
+        size: 14,
+        font: bold,
+      });
+    const heading = [body.title, body.location].filter(Boolean).join(" · ");
+    if (heading)
+      page.drawText(
+        shortened(heading, bold, 14, tableWidth - authorWidth - 20),
+        { x: MARGIN, y: top - 49, size: 14, font: bold },
+      );
+    if (body.sources?.length)
+      page.drawText(
+        shortened(
+          `Sammenslått av: ${body.sources.map((s) => s.title).join(", ")}`,
+          font,
+          10,
+          tableWidth,
+        ),
+        { x: MARGIN, y: top - 66, size: 10, font },
+      );
+    const side = layout.quantityWidth + layout.barcodeWidth,
+      nameX = MARGIN + side;
+    page.drawRectangle({
+      x: MARGIN,
+      y: AREA_CONTENT_TOP,
+      width: tableWidth,
+      height: 23,
+      color: rgb(1, 0.83, 0.25),
+    });
+    for (const [label, x, width] of [
+      ["ANTALL / STREKKODE", MARGIN, side],
+      ["VARE / EAN", nameX, layout.nameWidth],
+      ["ANTALL / STREKKODE", nameX + layout.nameWidth, side],
+    ] as const)
+      drawCentered(page, label, x, width, AREA_CONTENT_TOP + 7, 11, bold);
+    let y = AREA_CONTENT_TOP;
+    for (const r of layout.rows) {
+      const bottom = y - AREA_ROW_HEIGHT;
+      page.drawLine({
+        start: { x: MARGIN, y: bottom },
+        end: { x: PAGE_W - MARGIN, y: bottom },
+        thickness: 0.5,
+        color: lineColor,
+      });
+      for (const x of [nameX, nameX + layout.nameWidth])
+        page.drawLine({
+          start: { x, y },
+          end: { x, y: bottom },
+          thickness: 0.35,
+          color: lineColor,
+        });
+      const lineHeight = r.nameSize * 1.14,
+        textHeight = r.nameLines.length * lineHeight + AREA_EAN_SIZE + 2;
+      let ty = y - (AREA_ROW_HEIGHT - textHeight) / 2 - r.nameSize * 0.85;
+      for (const name of r.nameLines) {
+        drawCentered(page, name, nameX + 6, layout.nameWidth - 12, ty, r.nameSize, bold);
+        ty -= lineHeight;
+      }
+      drawCentered(
+        page,
+        r.line.ean,
+        nameX + 6,
+        layout.nameWidth - 12,
+        ty + lineHeight - r.nameSize * 0.25 - 2 - AREA_EAN_SIZE * 0.8,
+        AREA_EAN_SIZE,
+        font,
+        eanColor,
+      );
+      // The quantity sits next to the name; the barcode takes the outer edge.
+      const barcodeX =
+          r.side === "right"
+            ? PAGE_W - MARGIN - layout.barcodeWidth
+            : MARGIN,
+        qtyX =
+          r.side === "right"
+            ? barcodeX - layout.quantityWidth
+            : MARGIN + layout.barcodeWidth;
+      const rule = r.side === "right" ? barcodeX : qtyX;
+      page.drawLine({
+        start: { x: rule, y },
+        end: { x: rule, y: bottom },
+        thickness: 0.35,
+        color: lineColor,
+      });
+      const calcGap = r.calcLines.length ? 3 : 0,
+        calcHeight = r.calcLines.length * (AREA_CALC_SIZE + 1) + calcGap;
+      let cy = y - (AREA_ROW_HEIGHT - calcHeight - r.quantitySize * 0.72) / 2;
+      for (const calc of r.calcLines) {
+        cy -= AREA_CALC_SIZE + 1;
+        drawCentered(page, calc, qtyX, layout.quantityWidth, cy + 1.5, AREA_CALC_SIZE, font);
+      }
+      drawCentered(
+        page,
+        String(r.line.quantity),
+        qtyX,
+        layout.quantityWidth,
+        cy - calcGap - r.quantitySize * 0.72,
+        r.quantitySize,
+        bold,
+      );
+      const bits = eanBits(r.line.ean),
+        quiet = r.line.ean.length === 13 ? 11 : 7,
+        xDim = 0.33 * MM,
+        total = (bits.length + quiet + 7) * xDim;
+      drawBars(
+        page,
+        bits,
+        barcodeX + (layout.barcodeWidth - total) / 2 + quiet * xDim,
+        bottom + 9,
+        AREA_ROW_HEIGHT - 12.8,
+        2,
+      );
+      drawCentered(page, r.line.ean, barcodeX, layout.barcodeWidth, bottom + 1.2, 7, font);
+      y = bottom;
+    }
+    const label = `Side ${pi + 1} av ${pages.length}`;
+    page.drawText(label, {
+      x: PAGE_W - MARGIN - font.widthOfTextAtSize(label, 10),
+      y: MARGIN + 7,
+      size: 10,
+      font,
+    });
+  }
+  return {
+    bytes: await doc.save(),
+    pages: pages.length,
+    missingImages: 0,
+    maskedImages: 0,
+  };
+}
 export async function makePdf(
   body: SheetBody,
   id: string,
   revision: number,
   options: { imageLoader?: PrintImageLoader; creatorName?: string } = {},
 ) {
+  if (body.kind) return makeAreaPdf(body, id, revision, options.creatorName);
   const { doc, font, bold } = await fonts();
   const pages = planPages(body.lines, font, bold);
   const prepared = await (options.imageLoader || loadPrintImages)(body.lines);
@@ -273,20 +493,7 @@ export async function makePdf(
       const barHeight = 22.85 * MM;
       const bx = barcodeX + (fieldWidth - total) / 2 + quiet * xDim,
         by = mid - (barHeight - 18) / 2;
-      for (let i = 0; i < bits.length; i++)
-        if (bits[i] === "1") {
-          const guard =
-            i < 3 ||
-            i >= bits.length - 3 ||
-            Math.abs(i - bits.length / 2) < 2.5;
-          page.drawRectangle({
-            x: bx + i * xDim,
-            y: by - (guard ? 4 : 0),
-            width: xDim,
-            height: barHeight + (guard ? 4 : 0),
-            color: black,
-          });
-        }
+      drawBars(page, bits, bx, by, barHeight, 4);
       page.drawText(r.line.ean, {
         x: barcodeX + (fieldWidth - font.widthOfTextAtSize(r.line.ean, 9)) / 2,
         y: by - 16,

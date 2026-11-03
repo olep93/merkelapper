@@ -8,6 +8,7 @@ import {
   ChevronRight,
   FileText,
   FolderOpen,
+  Layers,
   Hash,
   LoaderCircle,
   LockKeyhole,
@@ -34,6 +35,16 @@ import {
   type SheetBody,
   type Line,
 } from "@/lib/model";
+import {
+  AREA_CALC_SIZE,
+  AREA_EAN_SIZE,
+  AREA_ROWS_PER_PAGE,
+  calculation,
+  changedSources,
+  mergeSheets,
+  nextAreaTitle,
+  sheetTitle,
+} from "@/lib/area";
 import { Scanner } from "./scanner";
 import { ProductPhoto } from "./product-photo";
 import type { Product } from "@/lib/products";
@@ -58,6 +69,25 @@ type Layout = {
     }[];
   }[];
 };
+type AreaLayout = {
+  area: true;
+  pages: {
+    nameWidth: number;
+    quantityWidth: number;
+    barcodeWidth: number;
+    count: number;
+    lines: {
+      id: string;
+      side: "left" | "right";
+      nameLines: string[];
+      nameSize: number;
+      quantitySize: number;
+      calcLines: string[];
+    }[];
+  }[];
+};
+// PDF points to preview width: the table spans 277 mm of the A3 page.
+const cqw = (points: number) => `${(points * 100) / ((277 * 72) / 25.4)}cqw`;
 class RequestError extends Error {
   constructor(
     message: string,
@@ -105,7 +135,7 @@ export function Workspace() {
     [conflict, setConflict] = useState(false),
     [scanner, setScanner] = useState(false),
     [preview, setPreview] = useState(false),
-    [layout, setLayout] = useState<Layout | null>(null),
+    [layout, setLayout] = useState<Layout | AreaLayout | null>(null),
     [layoutError, setLayoutError] = useState("");
   const [form, setForm] = useState(false),
     [ean, setEan] = useState(""),
@@ -127,6 +157,9 @@ export function Workspace() {
   const nameTouched = useRef(false);
   const [pdfState, setPdfState] = useState(""),
     [filter, setFilter] = useState<"all" | "draft" | "locked" | "trash">("all");
+  const [view, setView] = useState<"sheets" | "area">("sheets"),
+    [picked, setPicked] = useState<Set<string>>(new Set()),
+    [mergeError, setMergeError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
   const syncingRef = useRef(false);
@@ -339,7 +372,10 @@ export function Workspace() {
     setBusy(true);
     setError("");
     try {
-      const body = emptyBody();
+      const body: SheetBody =
+        view === "area"
+          ? { ...emptyBody(), kind: "area", title: nextAreaTitle(sheets) }
+          : emptyBody();
       const s = await api("/sheets", {
         method: "POST",
         body: JSON.stringify({
@@ -361,6 +397,53 @@ export function Workspace() {
     } finally {
       setBusy(false);
     }
+  }
+  async function mergePicked() {
+    if (busy || working.current) return;
+    if (dirty && !(await persist(bodyRef.current))) return;
+    setBusy(true);
+    setMergeError("");
+    try {
+      // Read fresh so counts saved from other devices are included.
+      const list: Sheet[] = await api("/sheets?include_deleted=1");
+      setSheets(list);
+      const chosen = list.filter(
+        (s) => picked.has(s.id) && s.body.kind === "area" && !s.deleted_at,
+      );
+      if (chosen.length < 2) throw new Error("Velg minst to områdelister.");
+      const body = mergeSheets(chosen);
+      const s = await api("/sheets", {
+        method: "POST",
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          operation: crypto.randomUUID(),
+          body,
+        }),
+      });
+      accept(s);
+      saved.current = JSON.stringify(body);
+      setDraft(body);
+      setPicked(new Set());
+      setPreview(false);
+      setFilter("all");
+      setForm(false);
+      setRemoved(null);
+      setPdfState("");
+      setError("");
+      setConflict(false);
+    } catch (e) {
+      setMergeError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function togglePicked(id: string) {
+    setMergeError("");
+    setPicked((list) => {
+      const next = new Set(list);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   }
   async function action(
     action: "lock" | "reopen" | "printed" | "delete" | "restore",
@@ -542,6 +625,7 @@ export function Workspace() {
               name: name.trim(),
               quantity: n,
               product: productData || l.product,
+              parts: undefined,
             }
           : l,
       );
@@ -560,6 +644,11 @@ export function Workspace() {
               name: name.trim(),
               quantity: Number(qty),
               product: productData,
+              // A hand-edited total no longer matches the merged calculation.
+              parts:
+                l.quantity === Number(qty) && l.ean === ean
+                  ? l.parts
+                  : undefined,
             }
           : l,
       );
@@ -691,7 +780,12 @@ export function Workspace() {
   const locked = sheet?.state === "locked" || trashed,
     lineCount = draft.lines.length,
     pageCount = layout?.pages.length;
-  const visible = sheets.filter(
+  const inView = sheets.filter((s) => Boolean(s.body.kind) === (view === "area"));
+  const mergeable = sheets.filter(
+    (s) => picked.has(s.id) && s.body.kind === "area" && !s.deleted_at,
+  );
+  const changed = sheet ? changedSources(draft, sheets) : [];
+  const visible = inView.filter(
     (s) =>
       (filter === "trash"
         ? Boolean(s.deleted_at)
@@ -742,12 +836,33 @@ export function Workspace() {
       ) : (
         <main className="workspace">
           <aside className={`sidebar ${sheet ? "mobile-hidden" : ""}`}>
+            <div className="view-tabs" role="tablist">
+              {(
+                [
+                  ["sheets", "Varetellingslapp", FileText],
+                  ["area", "Områder med varer flere steder", Layers],
+                ] as const
+              ).map(([v, label, Icon]) => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={view === v}
+                  className={view === v ? "selected" : ""}
+                  onClick={() => {
+                    setView(v);
+                    setMergeError("");
+                  }}
+                >
+                  <Icon size={15} /> {label}
+                </button>
+              ))}
+            </div>
             <div className="sidebar-heading">
               <div>
                 <span className="eyebrow">DITT ARBEIDSOMRÅDE</span>
                 <h1>
-                  Mine lapper
-                  <span>{sheets.filter((s) => !s.deleted_at).length}</span>
+                  {view === "area" ? "Områdelister" : "Mine lapper"}
+                  <span>{inView.filter((s) => !s.deleted_at).length}</span>
                 </h1>
               </div>
               <button
@@ -755,7 +870,7 @@ export function Workspace() {
                 onClick={create}
                 disabled={busy}
               >
-                <Plus size={19} /> Ny lapp
+                <Plus size={19} /> {view === "area" ? "Ny liste" : "Ny lapp"}
               </button>
             </div>
             <div className="sheet-sync">
@@ -797,44 +912,81 @@ export function Workspace() {
                 </button>
               ))}
             </div>
+            {view === "area" && filter !== "trash" && (
+              <div className="merge-bar">
+                <p>
+                  {mergeable.length
+                    ? mergeable
+                        .map((s) => sheetTitle(s.body))
+                        .sort((a, b) =>
+                          a.localeCompare(b, "nb", { numeric: true }),
+                        )
+                        .join(", ")
+                    : "Merk av listene du vil slå sammen."}
+                </p>
+                <button
+                  className="button primary"
+                  onClick={mergePicked}
+                  disabled={busy || mergeable.length < 2}
+                >
+                  <Layers size={17} /> Slå sammen til 1 liste
+                </button>
+                {mergeError && (
+                  <p className="form-error" role="alert">
+                    {mergeError}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="sheet-list">
               {visible.map((s) => (
-                <button
-                  key={s.id}
-                  className={`sheet-card ${sheet?.id === s.id ? "selected" : ""}`}
-                  onClick={() => select(s)}
-                  disabled={busy}
-                >
-                  <span className={`sheet-symbol ${s.state}`}>
-                    <FileText size={21} />
-                  </span>
-                  <span className="sheet-card-copy">
-                    <strong>
-                      {s.body.title || `Lapp ${dateLabel(s.body.date)}`}
-                    </strong>
-                    <span>
-                      {dateLabel(s.body.date)} · {s.body.lines.length}{" "}
-                      {s.body.lines.length === 1 ? "vare" : "varer"}
+                <div className="sheet-row" key={s.id}>
+                  {s.body.kind === "area" && !s.deleted_at && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Velg ${sheetTitle(s.body)} for sammenslåing`}
+                      checked={picked.has(s.id)}
+                      disabled={busy}
+                      onChange={() => togglePicked(s.id)}
+                    />
+                  )}
+                  <button
+                    className={`sheet-card ${sheet?.id === s.id ? "selected" : ""}`}
+                    onClick={() => select(s)}
+                    disabled={busy}
+                  >
+                    <span className={`sheet-symbol ${s.state}`}>
+                      <FileText size={21} />
                     </span>
-                    <span className={`status small ${s.state}`}>
-                      {s.state === "locked" ? (
-                        <LockKeyhole size={11} />
-                      ) : (
-                        <span className="dot" />
-                      )}
-                      {s.deleted_at
-                        ? "Papirkurv"
-                        : s.state === "locked"
-                          ? "Låst"
-                          : "Utkast"}
-                      {s.delete_after
-                        ? " · Slettes " +
-                          dateLabel(osloDate(new Date(s.delete_after)))
-                        : ""}
+                    <span className="sheet-card-copy">
+                      <strong>
+                        {s.body.title || `Lapp ${dateLabel(s.body.date)}`}
+                      </strong>
+                      <span>
+                        {dateLabel(s.body.date)} · {s.body.lines.length}{" "}
+                        {s.body.lines.length === 1 ? "vare" : "varer"}
+                      </span>
+                      <span className={`status small ${s.state}`}>
+                        {s.state === "locked" ? (
+                          <LockKeyhole size={11} />
+                        ) : (
+                          <span className="dot" />
+                        )}
+                        {s.deleted_at
+                          ? "Papirkurv"
+                          : s.state === "locked"
+                            ? "Låst"
+                            : "Utkast"}
+                        {s.body.kind === "merged" ? " · Sammenslått" : ""}
+                        {s.delete_after
+                          ? " · Slettes " +
+                            dateLabel(osloDate(new Date(s.delete_after)))
+                          : ""}
+                      </span>
                     </span>
-                  </span>
-                  <ChevronRight size={16} />
-                </button>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               ))}
               {!visible.length && (
                 <div className="list-empty">
@@ -842,7 +994,9 @@ export function Workspace() {
                   <p>
                     {query
                       ? "Ingen lapper passer søket."
-                      : "Lappene dine dukker opp her."}
+                      : view === "area"
+                        ? "Lag én liste for hvert område, for eksempel Skruer 1."
+                        : "Lappene dine dukker opp her."}
                   </p>
                 </div>
               )}
@@ -867,19 +1021,36 @@ export function Workspace() {
                 <span className="welcome-icon">
                   <ScanLine size={42} />
                 </span>
-                <span className="eyebrow">FRA STREKKODE TIL FERDIG LAPP</span>
-                <h2>Skann. Tell. Skriv ut.</h2>
-                <p>
-                  Samle varene på én lapp.
-                  <br />
-                  Vi fordeler dem på tydelige A3-ark.
-                </p>
+                <span className="eyebrow">
+                  {view === "area"
+                    ? "SAMME VARE PÅ MANGE STEDER"
+                    : "FRA STREKKODE TIL FERDIG LAPP"}
+                </span>
+                <h2>
+                  {view === "area"
+                    ? "Tell område for område."
+                    : "Skann. Tell. Skriv ut."}
+                </h2>
+                {view === "area" ? (
+                  <p>
+                    Lag én liste for hvert område.
+                    <br />
+                    Slå dem sammen til slutt, så summeres like varer.
+                  </p>
+                ) : (
+                  <p>
+                    Samle varene på én lapp.
+                    <br />
+                    Vi fordeler dem på tydelige A3-ark.
+                  </p>
+                )}
                 <button
                   className="button primary large"
                   onClick={create}
                   disabled={busy}
                 >
-                  <Plus size={20} /> Start en ny lapp
+                  <Plus size={20} />{" "}
+                  {view === "area" ? "Start en ny områdeliste" : "Start en ny lapp"}
                 </button>
                 <div className="welcome-steps">
                   <span>
@@ -910,7 +1081,8 @@ export function Workspace() {
                     }
                   }}
                 >
-                  <ArrowLeft size={16} /> Mine lapper
+                  <ArrowLeft size={16} />{" "}
+                  {draft.kind ? "Områdelister" : "Mine lapper"}
                 </button>
                 <div className="editor-top">
                   <div>
@@ -983,13 +1155,30 @@ export function Workspace() {
                     )}
                   </div>
                 )}
+                {draft.sources && (
+                  <div className="merge-note">
+                    <p>
+                      <Layers size={15} /> Slått sammen av{" "}
+                      {draft.sources.map((s) => s.title).join(", ")}.
+                    </p>
+                    {changed.length > 0 && (
+                      <p className="merge-note-warning" role="alert">
+                        {changed.map((s) => s.title).join(", ")} er endret etter
+                        sammenslåingen. Slå sammen på nytt for å få med
+                        endringen.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="metadata-grid">
                   <label>
                     Navn på lappen
                     <input
                       disabled={locked}
                       maxLength={100}
-                      placeholder="F.eks. Skruer · reol 4"
+                      placeholder={
+                        draft.kind ? "F.eks. Skruer 1" : "F.eks. Skruer · reol 4"
+                      }
                       value={draft.title}
                       onChange={(e) => {
                         setDraft({ ...draft, title: e.target.value });
@@ -1063,9 +1252,140 @@ export function Workspace() {
                             · {layout.pages.map((p) => p.count).join(" + ")}{" "}
                             varer
                           </span>
-                          <span>Størrelsen tilpasses automatisk</span>
+                          <span>
+                            {"area" in layout
+                              ? `Inntil ${AREA_ROWS_PER_PAGE} varer per ark`
+                              : "Størrelsen tilpasses automatisk"}
+                          </span>
                         </div>
-                        {layout.pages.map((p, i) => (
+                        {"area" in layout
+                          ? layout.pages.map((p, i) => {
+                              const side = p.quantityWidth + p.barcodeWidth;
+                              return (
+                                <div className="paper" key={i}>
+                                  <div className="paper-heading">
+                                    <strong>VARETELLING</strong>
+                                    <b>{dateLabel(draft.date)}</b>
+                                  </div>
+                                  <div className="paper-meta">
+                                    <span className="area-paper-title">
+                                      {[draft.title, draft.location]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </span>
+                                    <strong>
+                                      {account?.creatorName
+                                        ? `Laget av ${account.creatorName}`
+                                        : ""}
+                                    </strong>
+                                  </div>
+                                  {draft.sources && (
+                                    <div className="area-paper-sources">
+                                      Sammenslått av:{" "}
+                                      {draft.sources
+                                        .map((s) => s.title)
+                                        .join(", ")}
+                                    </div>
+                                  )}
+                                  <div
+                                    className="paper-column-head"
+                                    style={{
+                                      gridTemplateColumns: `${side}fr ${p.nameWidth}fr ${side}fr`,
+                                    }}
+                                  >
+                                    <span>ANTALL / STREKKODE</span>
+                                    <span>VARE / EAN</span>
+                                    <span>ANTALL / STREKKODE</span>
+                                  </div>
+                                  <div className="paper-rows">
+                                    {p.lines.map((r) => {
+                                      const l = draft.lines.find(
+                                        (l) => l.id === r.id,
+                                      );
+                                      if (!l) return null;
+                                      const scan = [
+                                        <div
+                                          className="area-paper-barcode"
+                                          key="barcode"
+                                        >
+                                          <Barcode ean={l.ean} />
+                                          <small>{l.ean}</small>
+                                        </div>,
+                                        <div
+                                          className="area-paper-quantity"
+                                          key="quantity"
+                                        >
+                                          {r.calcLines.map((text, j) => (
+                                            <small
+                                              key={j}
+                                              style={{
+                                                fontSize: cqw(AREA_CALC_SIZE),
+                                              }}
+                                            >
+                                              {text}
+                                            </small>
+                                          ))}
+                                          <b
+                                            style={{
+                                              fontSize: cqw(r.quantitySize),
+                                            }}
+                                          >
+                                            {l.quantity}
+                                          </b>
+                                        </div>,
+                                      ];
+                                      const text = (
+                                        <div
+                                          className="area-paper-name"
+                                          key="name"
+                                        >
+                                          <strong
+                                            style={{
+                                              fontSize: cqw(r.nameSize),
+                                            }}
+                                          >
+                                            {r.nameLines.map((name, j) => (
+                                              <span key={j}>{name}</span>
+                                            ))}
+                                          </strong>
+                                          <span
+                                            style={{
+                                              fontSize: cqw(AREA_EAN_SIZE),
+                                            }}
+                                          >
+                                            {l.ean}
+                                          </span>
+                                        </div>
+                                      );
+                                      const blank = <div key="blank" />;
+                                      return (
+                                        <div
+                                          className="area-paper-row"
+                                          key={r.id}
+                                          style={{
+                                            flexBasis: `${100 / AREA_ROWS_PER_PAGE}%`,
+                                            gridTemplateColumns:
+                                              r.side === "right"
+                                                ? `${side}fr ${p.nameWidth}fr ${p.quantityWidth}fr ${p.barcodeWidth}fr`
+                                                : `${p.barcodeWidth}fr ${p.quantityWidth}fr ${p.nameWidth}fr ${side}fr`,
+                                          }}
+                                        >
+                                          {r.side === "right"
+                                            ? [blank, text, scan[1], scan[0]]
+                                            : [scan[0], scan[1], text, blank]}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="paper-footer">
+                                    <span>
+                                      Side {i + 1} av {layout.pages.length}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          : layout.pages.map((p, i) => (
                           <div className="paper" key={i}>
                             <div className="paper-heading">
                               <strong>VARETELLING</strong>
@@ -1169,7 +1489,7 @@ export function Workspace() {
                               </span>
                             </div>
                           </div>
-                        ))}
+                            ))}
                         <p className="preview-disclaimer">
                           Forhåndsvisning av fordelingen. PDF-en har nøyaktige
                           A3-mål og vektorstrekkoder.
@@ -1248,9 +1568,21 @@ export function Workspace() {
                             <div className="line-copy">
                               <strong>{line.name}</strong>
                               <span>{line.ean}</span>
+                              {line.parts && draft.sources && (
+                                <small className="line-sources">
+                                  {line.parts
+                                    .map(
+                                      (p) =>
+                                        `${draft.sources![p.source]?.title}: ${p.quantity}`,
+                                    )
+                                    .join(" · ")}
+                                </small>
+                              )}
                             </div>
                             <div className="line-quantity">
-                              <small>ANTALL</small>
+                              <small className={calculation(line) ? "line-calc" : ""}>
+                                {calculation(line) || "ANTALL"}
+                              </small>
                               <strong>{line.quantity}</strong>
                             </div>
                             {!locked && (

@@ -1,4 +1,10 @@
 import { PDFDocument, StandardFonts, PDFFont } from "pdf-lib";
+import {
+  AREA_CALC_SIZE,
+  AREA_EAN_SIZE,
+  AREA_ROWS_PER_PAGE,
+  calculation,
+} from "./area";
 import type { Line } from "./model";
 export const MM = 72 / 25.4;
 export const PAGE_W = 297 * MM,
@@ -310,4 +316,89 @@ export function planPages(
       rows: rows.map((r) => ({ ...r, height: r.height + spare / rows.length })),
     };
   });
+}
+export const AREA_CONTENT_TOP = PAGE_H - MARGIN - 100;
+export const AREA_ROW_HEIGHT =
+  (AREA_CONTENT_TOP - CONTENT_BOTTOM) / AREA_ROWS_PER_PAGE;
+export type AreaRow = {
+  line: Line;
+  side: "left" | "right";
+  nameLines: string[];
+  nameSize: number;
+  quantitySize: number;
+  calcLines: string[];
+};
+export type AreaPage = {
+  rows: AreaRow[];
+  nameWidth: number;
+  quantityWidth: number;
+  barcodeWidth: number;
+};
+function fitAreaName(name: string, bold: PDFFont, width: number) {
+  for (let size = 14; size >= 9; size -= 0.5) {
+    const lines = wrap(name, bold, size, width);
+    if (
+      lines.length <= 2 &&
+      lines.length * size * 1.14 + AREA_EAN_SIZE + 2 <= AREA_ROW_HEIGHT - 3
+    )
+      return { nameLines: lines, nameSize: size };
+  }
+  // The EAN identifies the item, so a very long name may be shortened on paper.
+  const [first, second] = wrap(name, bold, 9, width);
+  let rest = second;
+  while (rest && bold.widthOfTextAtSize(rest + "…", 9) > width)
+    rest = rest.slice(0, -1);
+  return { nameLines: [first, rest.trimEnd() + "…"], nameSize: 9 };
+}
+function areaCalculation(line: Line, font: PDFFont, width: number) {
+  const text = calculation(line);
+  if (!text) return [];
+  const lines = wrap(text, font, AREA_CALC_SIZE, width);
+  return lines.length <= 2 ? lines : [`Sum av ${line.parts!.length} lister`];
+}
+// One row per item at a fixed height. Same-side barcodes stay two rows apart.
+export function planAreaPages(
+  lines: Line[],
+  font: PDFFont,
+  bold: PDFFont,
+): AreaPage[] {
+  const quantityWidth = Math.max(
+    28 * MM,
+    ...lines.map((l) =>
+      Math.min(
+        48 * MM,
+        Math.max(
+          bold.widthOfTextAtSize(String(l.quantity), 22),
+          font.widthOfTextAtSize(calculation(l), AREA_CALC_SIZE),
+        ) + 8,
+      ),
+    ),
+  );
+  const nameWidth =
+    PAGE_W - 2 * MARGIN - 2 * (quantityWidth + BARCODE_COLUMN_WIDTH);
+  const pages: AreaPage[] = [];
+  for (let i = 0; i < lines.length; i += AREA_ROWS_PER_PAGE)
+    pages.push({
+      nameWidth,
+      quantityWidth,
+      barcodeWidth: BARCODE_COLUMN_WIDTH,
+      rows: lines.slice(i, i + AREA_ROWS_PER_PAGE).map((line, row) => {
+        const calcLines = areaCalculation(line, font, quantityWidth - 6);
+        let quantitySize = calcLines.length > 1 ? 18 : calcLines.length ? 22 : 26;
+        while (
+          quantitySize > 10 &&
+          bold.widthOfTextAtSize(String(line.quantity), quantitySize) >
+            quantityWidth - 6
+        )
+          quantitySize--;
+        return {
+          line,
+          side: row % 2 ? "left" : "right",
+          ...fitAreaName(line.name, bold, nameWidth - 12),
+          quantitySize,
+          calcLines,
+        };
+      }),
+    });
+  return pages;
 }
