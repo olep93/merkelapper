@@ -111,6 +111,8 @@ export type SheetBody = z.infer<typeof bodySchema>;
 export type Sheet = {
   id: string;
   owner_id: string;
+  owner_name: string | null;
+  store_id: string | null;
   body: SheetBody;
   state: "draft" | "locked";
   version: number;

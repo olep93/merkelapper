@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { creatorName } from "../src/lib/creator-name";
+import { creatorName, ownerCreatorName } from "../src/lib/creator-name";
 test("print attribution uses first name and final surname initial", () => {
   for (const [name, expected] of [
     ["Ole Petter Kristiansen", "Ole K."],
@@ -19,4 +19,8 @@ test("print attribution uses first name and final surname initial", () => {
     "mats L.",
   );
   assert.equal(creatorName({ user_metadata: { display_name: {} } }), "Bruker");
+});
+test("a colleague's sheet is attributed from the stored owner name", () => {
+  assert.equal(ownerCreatorName("Ole Petter Kristiansen"), "Ole K.");
+  assert.equal(ownerCreatorName(null), "Bruker");
 });

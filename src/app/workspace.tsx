@@ -41,14 +41,17 @@ import {
   AREA_ROWS_PER_PAGE,
   calculation,
   changedSources,
+  inStore,
   mergeSheets,
   nextAreaTitle,
   sheetTitle,
 } from "@/lib/area";
+import { ownerCreatorName } from "@/lib/creator-name";
 import { Scanner } from "./scanner";
 import { ProductPhoto } from "./product-photo";
 import type { Product } from "@/lib/products";
-const API = "/merkelapp/api";
+const API = "/merkelapp/api",
+  STORE_KEY = "merkelapp-store";
 type Layout = {
   pages: {
     nameWidth: number;
@@ -120,6 +123,8 @@ async function api(path: string, options?: RequestInit) {
 }
 export function Workspace() {
   const [account, setAccount] = useState<{
+      id: string;
+      stores: { id: string; name: string }[];
       name: string;
       email: string;
       creatorName: string;
@@ -159,7 +164,8 @@ export function Workspace() {
     [filter, setFilter] = useState<"all" | "draft" | "locked" | "trash">("all");
   const [view, setView] = useState<"sheets" | "area">("sheets"),
     [picked, setPicked] = useState<Set<string>>(new Set()),
-    [mergeError, setMergeError] = useState("");
+    [mergeError, setMergeError] = useState(""),
+    [storeId, setStoreId] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
   const syncingRef = useRef(false);
@@ -185,7 +191,17 @@ export function Workspace() {
   useEffect(() => {
     (async () => {
       try {
-        setAccount(await api("/session"));
+        const me = await api("/session");
+        setAccount(me);
+        let remembered = "";
+        try {
+          remembered = localStorage.getItem(STORE_KEY) || "";
+        } catch {}
+        setStoreId(
+          me.stores.some((s: { id: string }) => s.id === remembered)
+            ? remembered
+            : me.stores[0]?.id || "",
+        );
         await refresh();
       } catch (e) {
         setGate(e instanceof Error ? e.message : "Kunne ikke laste inn.");
@@ -374,7 +390,11 @@ export function Workspace() {
     try {
       const body: SheetBody =
         view === "area"
-          ? { ...emptyBody(), kind: "area", title: nextAreaTitle(sheets) }
+          ? {
+              ...emptyBody(),
+              kind: "area",
+              title: nextAreaTitle(inStore(sheets, storeId)),
+            }
           : emptyBody();
       const s = await api("/sheets", {
         method: "POST",
@@ -382,6 +402,7 @@ export function Workspace() {
           id: crypto.randomUUID(),
           operation: crypto.randomUUID(),
           body,
+          store: view === "area" && storeId ? storeId : undefined,
         }),
       });
       accept(s);
@@ -418,6 +439,7 @@ export function Workspace() {
           id: crypto.randomUUID(),
           operation: crypto.randomUUID(),
           body,
+          store: storeId || undefined,
         }),
       });
       accept(s);
@@ -436,6 +458,14 @@ export function Workspace() {
     } finally {
       setBusy(false);
     }
+  }
+  function chooseStore(id: string) {
+    setStoreId(id);
+    setPicked(new Set());
+    setMergeError("");
+    try {
+      localStorage.setItem(STORE_KEY, id);
+    } catch {}
   }
   function togglePicked(id: string) {
     setMergeError("");
@@ -777,10 +807,18 @@ export function Workspace() {
     }
   }
   const trashed = Boolean(sheet?.deleted_at);
-  const locked = sheet?.state === "locked" || trashed,
+  const readOnly = Boolean(sheet && account && sheet.owner_id !== account.id),
+    stateLocked = sheet?.state === "locked" || trashed,
+    locked = stateLocked || readOnly,
+    sheetCreator = readOnly
+      ? ownerCreatorName(sheet?.owner_name ?? null)
+      : account?.creatorName,
+    storeName = account?.stores.find((s) => s.id === storeId)?.name,
     lineCount = draft.lines.length,
     pageCount = layout?.pages.length;
-  const inView = sheets.filter((s) => Boolean(s.body.kind) === (view === "area"));
+  const inView = inStore(sheets, storeId).filter(
+    (s) => Boolean(s.body.kind) === (view === "area"),
+  );
   const mergeable = sheets.filter(
     (s) => picked.has(s.id) && s.body.kind === "area" && !s.deleted_at,
   );
@@ -873,6 +911,22 @@ export function Workspace() {
                 <Plus size={19} /> {view === "area" ? "Ny liste" : "Ny lapp"}
               </button>
             </div>
+            {view === "area" && (account?.stores.length || 0) > 1 && (
+              <label className="store-picker">
+                Varehus
+                <select
+                  value={storeId}
+                  disabled={busy}
+                  onChange={(e) => chooseStore(e.target.value)}
+                >
+                  {account?.stores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="sheet-sync">
               <span role="status">
                 {syncError || "Oppdateres automatisk hvert 5. sekund"}
@@ -965,6 +1019,9 @@ export function Workspace() {
                       <span>
                         {dateLabel(s.body.date)} · {s.body.lines.length}{" "}
                         {s.body.lines.length === 1 ? "vare" : "varer"}
+                        {account && s.owner_id !== account.id
+                          ? ` · ${ownerCreatorName(s.owner_name)}`
+                          : ""}
                       </span>
                       <span className={`status small ${s.state}`}>
                         {s.state === "locked" ? (
@@ -1003,11 +1060,21 @@ export function Workspace() {
             </div>
             <div className="sidebar-note">
               <Cloud size={18} />
-              <p>
-                Lagres på kontoen din.
-                <br />
-                Tilgjengelig på mobil og PC.
-              </p>
+              {view === "area" ? (
+                <p>
+                  {storeName
+                    ? `Deles med alle på ${storeName}.`
+                    : "Du er ikke knyttet til et varehus, så listene er bare synlige for deg."}
+                  <br />
+                  Bare den som laget en liste kan endre den.
+                </p>
+              ) : (
+                <p>
+                  Lagres på kontoen din.
+                  <br />
+                  Tilgjengelig på mobil og PC.
+                </p>
+              )}
             </div>
           </aside>
           <section className="editor">
@@ -1092,14 +1159,14 @@ export function Workspace() {
                     <h2>{draft.title || "Ny varetelling"}</h2>
                     <div className="editor-sub">
                       <span className={`status ${sheet.state}`}>
-                        {locked ? (
+                        {stateLocked ? (
                           <LockKeyhole size={12} />
                         ) : (
                           <span className="dot" />
                         )}
                         {trashed
                           ? "I papirkurven"
-                          : locked
+                          : stateLocked
                             ? `Låst · revisjon ${sheet.revision}`
                             : "Utkast"}
                       </span>
@@ -1127,15 +1194,17 @@ export function Workspace() {
                       </span>
                     </div>
                   </div>
-                  <button
-                    className="icon-button delete-sheet"
-                    title="Flytt til papirkurven"
-                    aria-label="Slett lapp"
-                    onClick={() => action("delete")}
-                    disabled={busy || trashed}
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      className="icon-button delete-sheet"
+                      title="Flytt til papirkurven"
+                      aria-label="Slett lapp"
+                      onClick={() => action("delete")}
+                      disabled={busy || trashed}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
                 {error && (
                   <div className="error-banner" role="alert">
@@ -1153,6 +1222,14 @@ export function Workspace() {
                         Prøv igjen
                       </button>
                     )}
+                  </div>
+                )}
+                {readOnly && (
+                  <div className="merge-note">
+                    <p>
+                      Laget av {sheetCreator}. Du kan se listen og slå den
+                      sammen med andre, men bare {sheetCreator} kan endre den.
+                    </p>
                   </div>
                 )}
                 {draft.sources && (
@@ -1274,8 +1351,8 @@ export function Workspace() {
                                         .join(" · ")}
                                     </span>
                                     <strong>
-                                      {account?.creatorName
-                                        ? `Laget av ${account.creatorName}`
+                                      {sheetCreator
+                                        ? `Laget av ${sheetCreator}`
                                         : ""}
                                     </strong>
                                   </div>
@@ -1394,8 +1471,8 @@ export function Workspace() {
                             <div className="paper-meta">
                               <span>{draft.location}</span>
                               <strong>
-                                {account?.creatorName
-                                  ? `Laget av ${account.creatorName}`
+                                {sheetCreator
+                                  ? `Laget av ${sheetCreator}`
                                   : ""}
                               </strong>
                             </div>
@@ -1653,7 +1730,7 @@ export function Workspace() {
                     </p>
                   </div>
                   <div className="footer-actions">
-                    {!trashed && (
+                    {!trashed && !readOnly && (
                       <button
                         className="button secondary"
                         onClick={() => openPdf(true)}
@@ -1671,6 +1748,16 @@ export function Workspace() {
                       >
                         <Undo2 size={17} /> Gjenopprett lapp
                       </button>
+                    ) : readOnly ? (
+                      stateLocked && (
+                        <button
+                          className="button primary"
+                          onClick={() => openPdf()}
+                          disabled={busy || pdfState === "PDF klargjøres …"}
+                        >
+                          <Printer size={18} /> Åpne PDF
+                        </button>
+                      )
                     ) : locked ? (
                       <>
                         <button
@@ -1702,7 +1789,7 @@ export function Workspace() {
                     )}
                   </div>
                 </footer>
-                {locked && !trashed && (
+                {locked && !trashed && !readOnly && (
                   <div className="print-confirm">
                     <div>
                       <strong>

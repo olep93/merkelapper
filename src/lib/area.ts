@@ -7,6 +7,10 @@ export function sheetTitle(body: SheetBody) {
   return body.title || `Lapp ${dateLabel(body.date)}`;
 }
 const titleBase = (title: string) => title.replace(/\s*\d+$/, "").trim();
+// Private lists follow the user, while shared lists belong to one store.
+export function inStore(sheets: Sheet[], storeId: string) {
+  return sheets.filter((s) => !s.store_id || s.store_id === storeId);
+}
 // Suggests the next name in a numbered series: "Skruer 3" gives "Skruer 4".
 export function nextAreaTitle(sheets: Sheet[]) {
   const areas = sheets.filter((s) => s.body.kind === "area" && !s.deleted_at);

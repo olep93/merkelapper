@@ -1,4 +1,4 @@
-import { creatorName } from "@/lib/creator-name";
+import { creatorName, ownerCreatorName } from "@/lib/creator-name";
 import { requireUser, failure, ApiError } from "@/lib/supabase";
 import { bodySchema } from "@/lib/model";
 import { makePdf } from "@/lib/pdf";
@@ -12,9 +12,8 @@ export async function GET(
     const { id } = await params;
     const { data: sheet } = await db
       .from("merkelapp_sheets")
-      .select("id,state,revision,deleted_at")
+      .select("id,owner_id,owner_name,state,revision,deleted_at")
       .eq("id", id)
-      .eq("owner_id", user.id)
       .single();
     if (!sheet || sheet.deleted_at)
       throw new ApiError(
@@ -34,7 +33,12 @@ export async function GET(
       bodySchema.parse(revision.body),
       id,
       sheet.revision,
-      { creatorName: creatorName(user) },
+      {
+        creatorName:
+          sheet.owner_id === user.id
+            ? creatorName(user)
+            : ownerCreatorName(sheet.owner_name),
+      },
     );
     return new Response(Buffer.from(bytes), {
       headers: {

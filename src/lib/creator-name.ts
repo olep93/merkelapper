@@ -21,3 +21,7 @@ export function creatorName(user: {
     last ? `${first} ${[...last][0].toLocaleUpperCase("nb-NO")}.` : first
   ).slice(0, 60);
 }
+/** Attribution for a colleague's sheet, whose account the current user cannot read. */
+export function ownerCreatorName(ownerName: string | null) {
+  return creatorName({ user_metadata: { display_name: ownerName } });
+}

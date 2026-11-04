@@ -9,7 +9,7 @@ export async function GET(request: Request) {
       query = query.is("deleted_at", null);
     const { data, error } = await query
       .order("updated_at", { ascending: false })
-      .limit(200);
+      .limit(500);
     if (error) throw error;
     return Response.json(data);
   } catch (e) {
@@ -21,7 +21,12 @@ export async function POST(request: Request) {
     checkOrigin(request);
     const { db } = await requireUser();
     const parsed = z
-      .object({ id: z.uuid(), operation: z.uuid(), body: bodySchema })
+      .object({
+        id: z.uuid(),
+        operation: z.uuid(),
+        body: bodySchema,
+        store: z.uuid().optional(),
+      })
       .safeParse(await request.json());
     if (!parsed.success) throw new ApiError(parsed.error.issues[0].message);
     const p = parsed.data;
@@ -31,8 +36,13 @@ export async function POST(request: Request) {
       p_operation: p.operation,
       p_action: "create",
       p_body: p.body,
+      p_store: p.store ?? null,
     });
-    if (error) throw error;
+    if (error) {
+      if (error.message.includes("store_denied"))
+        throw new ApiError("Du har ikke tilgang til dette varehuset.", 403);
+      throw error;
+    }
     return Response.json(data);
   } catch (e) {
     return failure(e);

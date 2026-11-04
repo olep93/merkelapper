@@ -7,7 +7,7 @@ Mobilskanning, private tellingslapper og balansert A3-utskrift i Jobbverktøy.
 ## Førsteutgaven
 
 - Felles Supabase-innlogging med portalen. Krever `merkelapp` i brukerens serverstyrte `app_metadata.apps`.
-- Egne lapper per konto. Ny lapp, søk, autosparing og åpning på mobil/PC.
+- Vanlige lapper er private per konto. Ny lapp, søk, autosparing og åpning på mobil/PC.
 - ZXing-C++ via `zxing-wasm`, med lokalt servert WASM. EAN-8/13, kontrollsiffer, bakre kamera, smalt avlesningsområde, kameravalg og lys/zoom der tilgjengelig. Pause ved treff og stopp ved lukking/skjermlås. Manuell EAN eller HID-skanner i EAN-feltet med Enter. Bildeavlesning som reserve.
 - Eksakt EAN-oppslag mot Obs BYGG henter varenavn, pakningsvariant og produktbilde. Treff bekreftes mot strukturerte produktdata på produktsiden. Navnet kan redigeres, og manuell registrering fungerer ved manglende treff eller teknisk feil. Bilde vises ved registrering, i varelisten og i A3-PDF-en.
 - Antall starter tomt og må være et heltall >= 0. Duplikat-EAN krever eksplisitt Legg til/Erstatt/Avbryt. Fjernede linjer kan angres.
@@ -19,7 +19,9 @@ Mobilskanning, private tellingslapper og balansert A3-utskrift i Jobbverktøy.
 
 Egen fane for varer som står mange steder, for eksempel skruer. Lag én liste per område (neste navn foreslås: Skruer 3 gir Skruer 4), merk av listene og velg **Slå sammen til 1 liste**. Da lages en ny liste der like EAN-er summeres og utregningen vises i liten skrift over totalen. Områdelistene beholdes uendret. Endres en av dem etterpå, varsler den sammenslåtte listen om det. Endres en total for hånd på den sammenslåtte listen, fjernes utregningen for den varen.
 
-Utskriften er A3 med inntil 25 varer per ark og uten bilder: varenavn og blå EAN i midten, antall og strekkode veksler mellom høyre og venstre fra rad til rad. Vanlige lapper skrives ut som før. Listetypen lagres i lappens `body`, så funksjonen krever ingen databasemigrering.
+Utskriften er A3 med inntil 25 varer per ark og uten bilder: varenavn og blå EAN i midten, antall og strekkode veksler mellom høyre og venstre fra rad til rad. Vanlige lapper skrives ut som før. Listetypen lagres i lappens `body`.
+
+Områdelister og sammenslåtte lister deles per varehus. Alle med Merkelapp-tilgang på samme varehus ser hverandres lister, kan åpne PDF av låste lister og kan slå listene sammen. Bare den som laget en liste kan endre, låse, skrive ut-markere eller slette den, og en liste i papirkurven forsvinner for kollegaene. Varehus og medlemskap hentes fra Driftssjekks `stores` og `memberships` i samme Supabase-prosjekt: varehusmedlemmer ser sitt varehus, og driftssjefer og samvirkeadministratorer ser varehusene de har ansvar for. Har en bruker flere varehus, velges det i Områder-fanen. Uten varehus er listene private. Eksisterende lister deles bare når eieren har nøyaktig ett varehus.
 
 ## Utvikling
 
@@ -35,7 +37,7 @@ pnpm build
 
 Åpne `http://localhost:3014/merkelapp`. Delt innlogging krever at du åpner gjennom en lokal portal med rewrite til denne adressen, eller logger inn med samme Supabase-prosjekt på samme origin.
 
-Kjør SQL-filene under `supabase/migrations` i rekkefølge i Supabase SQL Editor. De oppretter bare Merkelapps egne tabeller/funksjoner. Alle tre migreringene er kjørt i portalens prosjekt. Alternativt kan `scripts/db.mjs migrate <fil>` brukes med egen Postgres-tilkobling. Sikkerhetskritiske skrivehandlinger er samlet i `merkelapp_write`, med kontosjekk, validering, radlås, optimistisk versjon og idempotent operasjons-ID.
+Kjør SQL-filene under `supabase/migrations` i rekkefølge i Supabase SQL Editor. De oppretter bare Merkelapps egne tabeller/funksjoner. De tre første migreringene er kjørt i portalens prosjekt. `202611040001_area_lists_by_store.sql` må kjøres før koden som bruker den deployes, ellers feiler innlastingen av appen. Alternativt kan `scripts/db.mjs migrate <fil>` brukes med egen Postgres-tilkobling. Sikkerhetskritiske skrivehandlinger er samlet i `merkelapp_write`, med kontosjekk, validering, radlås, optimistisk versjon og idempotent operasjons-ID.
 
 ### Vercel og portal
 

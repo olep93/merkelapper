@@ -101,3 +101,8 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 - Når hele A3-arket ble analysert samlet, ble alle koder funnet, men ZXing ga i tillegg enkelte feil koder ved noen oppløsninger (1 ved 300 dpi i en kontroll med 100 EAN-er over 11 oppløsninger, 1 ved 300 dpi på eksempelarket med 28 varer). Vanlige lapper ga ingen feil koder i samme kontroll. Dette er bilder av PDF-en, ikke kamera eller papir.
 - Gjenstår: fysisk A3-utskrift ved 100 %, lest med både telefon og håndskanner. Strekkodene er 9,7 mm høye mot 22,85 mm på vanlige lapper.
 
+## Områdelister delt per varehus (2026-11-04)
+
+Kontrollert: migreringen og tilgangsreglene mot lokal Postgres (PGlite) med forenklede Driftssjekk-tabeller, inkludert kollegaer, annet varehus, driftssjef, bruker uten Merkelapp-tilgang, skriveforsøk fra kollega, revisjoner, papirkurv og overføring av eksisterende lister.
+
+Ikke kontrollert: migreringen mot portalens faktiske Supabase-prosjekt, `pnpm build` og grensesnittet i nettleser med to ekte kontoer.

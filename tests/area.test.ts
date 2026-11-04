@@ -7,6 +7,7 @@ import {
   changedSources,
   countFingerprint,
   mergeSheets,
+  inStore,
   mergedTitle,
   nextAreaTitle,
 } from "../src/lib/area";
@@ -32,6 +33,8 @@ const sheet = (
 ): Sheet => ({
   id: crypto.randomUUID(),
   owner_id: crypto.randomUUID(),
+  owner_name: null,
+  store_id: null,
   body: { title, date: "2026-11-03", location: "", kind: "area", lines },
   state: "draft",
   version: 1,
@@ -220,4 +223,15 @@ test("area PDFs are A3, use no product images and leave normal sheets alone", as
   assert.equal(Math.round((height * 25.4) / 72), 420);
   const { font, bold } = await fonts();
   assert.equal(planPages(many(12), font, bold).length, 2);
+});
+test("a store view holds its own shared lists and the user's private lists", () => {
+  const here = sheet("Skruer 1", [], { store_id: "a" }),
+    elsewhere = sheet("Skruer 2", [], { store_id: "b" }),
+    colleague = sheet("Skruer 3", [], { store_id: "a" }),
+    privateList = sheet("Skruer 4", []);
+  assert.deepEqual(
+    inStore([here, elsewhere, colleague, privateList], "a"),
+    [here, colleague, privateList],
+  );
+  assert.equal(nextAreaTitle(inStore([elsewhere, here], "a")), "Skruer 2");
 });
