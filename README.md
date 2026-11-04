@@ -37,7 +37,7 @@ pnpm build
 
 Åpne `http://localhost:3014/merkelapp`. Delt innlogging krever at du åpner gjennom en lokal portal med rewrite til denne adressen, eller logger inn med samme Supabase-prosjekt på samme origin.
 
-Kjør SQL-filene under `supabase/migrations` i rekkefølge i Supabase SQL Editor. De oppretter bare Merkelapps egne tabeller/funksjoner. De tre første migreringene er kjørt i portalens prosjekt. `202611040001_area_lists_by_store.sql` må kjøres før koden som bruker den deployes, ellers feiler innlastingen av appen. Alternativt kan `scripts/db.mjs migrate <fil>` brukes med egen Postgres-tilkobling. Sikkerhetskritiske skrivehandlinger er samlet i `merkelapp_write`, med kontosjekk, validering, radlås, optimistisk versjon og idempotent operasjons-ID.
+Kjør SQL-filene under `supabase/migrations` i rekkefølge i Supabase SQL Editor. De oppretter bare Merkelapps egne tabeller/funksjoner. Alle fire migreringene er kjørt i portalens prosjekt. Nye migreringer må kjøres før koden som bruker dem deployes. Alternativt kan `scripts/db.mjs migrate <fil>` brukes med egen Postgres-tilkobling. Sikkerhetskritiske skrivehandlinger er samlet i `merkelapp_write`, med kontosjekk, validering, radlås, optimistisk versjon og idempotent operasjons-ID.
 
 ### Vercel og portal
 

@@ -105,4 +105,6 @@ Appen er en første testutgave, ikke en fysisk godkjent butikkpilot.
 
 Kontrollert: migreringen og tilgangsreglene mot lokal Postgres (PGlite) med forenklede Driftssjekk-tabeller, inkludert kollegaer, annet varehus, driftssjef, bruker uten Merkelapp-tilgang, skriveforsøk fra kollega, revisjoner, papirkurv og overføring av eksisterende lister.
 
-Ikke kontrollert: migreringen mot portalens faktiske Supabase-prosjekt, `pnpm build` og grensesnittet i nettleser med to ekte kontoer.
+Kontrollert i portalens Supabase-prosjekt 2026-11-04: migreringen er kjørt, og kolonner, funksjoner, tilgangsregel og rettigheter er bekreftet. 2 av 3 eksisterende områdelister ble delt, og ingen vanlige lapper er delt. `pnpm build` er grønn.
+
+Ikke kontrollert: grensesnittet i nettleser med to ekte kontoer.
