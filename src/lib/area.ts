@@ -51,6 +51,24 @@ export function countFingerprint(body: SheetBody) {
     hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
   return hash.toString(16);
 }
+// Summing a merged list with one of its own sublists would count those items twice.
+export function doubleCounted(chosen: Sheet[], sheets: Sheet[]) {
+  const within = (id: string, seen = new Set<string>()): Set<string> => {
+    for (const source of sheets.find((s) => s.id === id)?.body.sources || [])
+      if (!seen.has(source.id)) {
+        seen.add(source.id);
+        within(source.id, seen);
+      }
+    return seen;
+  };
+  for (const outer of chosen) {
+    const inner = within(outer.id);
+    const list = chosen.find((s) => inner.has(s.id));
+    if (list)
+      return { list: sheetTitle(list.body), within: sheetTitle(outer.body) };
+  }
+  return null;
+}
 export function mergeSheets(sources: Source[], date = osloDate()): SheetBody {
   const ordered = [...sources].sort((a, b) =>
     sheetTitle(a.body).localeCompare(sheetTitle(b.body), "nb", {

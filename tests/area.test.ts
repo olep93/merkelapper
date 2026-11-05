@@ -6,6 +6,7 @@ import {
   calculation,
   changedSources,
   countFingerprint,
+  doubleCounted,
   mergedInto,
   storeForNewSheet,
   mergeSheets,
@@ -269,4 +270,40 @@ test("a new area list without a chosen store goes to the user's only store", () 
   assert.equal(storeForNewSheet(area, undefined, two), undefined);
   assert.equal(storeForNewSheet(area, "b", two), "b");
   assert.equal(storeForNewSheet(label, undefined, one), undefined);
+});
+
+test("a merged list can be merged again without losing the totals", () => {
+  const first = mergeSheets([
+    sheet("Skruer 1", [line(A, 12)]),
+    sheet("Skruer 2", [line(A, 8)]),
+  ]);
+  const merged = { ...sheet("Skruer samlet", first.lines), body: first };
+  const again = mergeSheets([merged, sheet("Skruer 3", [line(A, 30)])]);
+  assert.equal(again.kind, "merged");
+  assert.equal(again.lines[0].quantity, 50);
+  assert.deepEqual(
+    again.lines[0].parts?.map((p) => p.quantity),
+    [30, 20],
+  );
+  assert.equal(calculation(again.lines[0]), "30 + 20");
+  assert.ok(bodySchema.safeParse(again).success);
+});
+
+test("a list cannot be merged together with a list that already contains it", () => {
+  const one = sheet("Skruer 1", [line(A, 12)]),
+    two = sheet("Skruer 2", [line(A, 8)]),
+    three = sheet("Skruer 3", [line(A, 30)]);
+  const inner = { ...sheet("Samlet", []), body: mergeSheets([one, two]) };
+  const outer = { ...sheet("Alt", []), body: mergeSheets([inner, three]) };
+  const all = [one, two, three, inner, outer];
+  assert.deepEqual(doubleCounted([one, three], all), null);
+  assert.deepEqual(doubleCounted([inner, three], all), null);
+  assert.deepEqual(doubleCounted([inner, one], all), {
+    list: "Skruer 1",
+    within: inner.body.title,
+  });
+  assert.deepEqual(doubleCounted([outer, two], all), {
+    list: "Skruer 2",
+    within: outer.body.title,
+  });
 });

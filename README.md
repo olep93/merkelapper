@@ -21,7 +21,7 @@ Merk av lapper i oversikten og velg **Skriv ut valgte**. Utkast låses først et
 
 ## Områder med varer flere steder
 
-Egen fane for varer som står mange steder, for eksempel skruer. Lag én liste per område (neste navn foreslås: Skruer 3 gir Skruer 4), merk av listene, velg **Se sammenslåing** og gi den nye listen et navn. Da lages en ny liste der like EAN-er summeres og utregningen vises i liten skrift over totalen. Områdelistene beholdes uendret. Endres en av dem etterpå, varsler den sammenslåtte listen om det. Endres en total for hånd på den sammenslåtte listen, fjernes utregningen for den varen.
+Egen fane for varer som står mange steder, for eksempel skruer. Lag én liste per område (neste navn foreslås: Skruer 3 gir Skruer 4), merk av listene, velg **Se sammenslåing** og gi den nye listen et navn. Da lages en ny liste der like EAN-er summeres og utregningen vises i liten skrift over totalen. Områdelistene beholdes uendret. Sammenslåtte lister kan også slås sammen videre. Endres en av dem etterpå, varsler den sammenslåtte listen om det. Endres en total for hånd på den sammenslåtte listen, fjernes utregningen for den varen.
 
 Utskriften er A3 med inntil 25 varer per ark og uten bilder: varenavn og blå EAN i midten, antall og strekkode veksler mellom høyre og venstre fra rad til rad. Vanlige lapper skrives ut som før. Listetypen lagres i lappens `body`.
 

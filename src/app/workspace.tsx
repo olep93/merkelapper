@@ -43,6 +43,7 @@ import {
   AREA_ROWS_PER_PAGE,
   calculation,
   changedSources,
+  doubleCounted,
   inStore,
   mergedInto,
   sourceColor,
@@ -540,9 +541,14 @@ export function Workspace() {
       const list: Sheet[] = await api("/sheets?include_deleted=1");
       setSheets(list);
       const chosen = list.filter(
-        (s) => picked.has(s.id) && s.body.kind === "area" && !s.deleted_at,
+        (s) => picked.has(s.id) && Boolean(s.body.kind) && !s.deleted_at,
       );
-      if (chosen.length < 2) throw new Error("Velg minst to områdelister.");
+      if (chosen.length < 2) throw new Error("Velg minst to lister.");
+      const overlap = doubleCounted(chosen, list);
+      if (overlap)
+        throw new Error(
+          `${overlap.within} inneholder allerede ${overlap.list}. Fjern en av dem, ellers telles varene to ganger.`,
+        );
       const body = mergeSheets(chosen);
       if (!commit || !mergePreview || !mergeContentsMatch(body, mergePreview)) {
         if (commit)
@@ -1053,7 +1059,7 @@ export function Workspace() {
       : !s.deleted_at && Boolean(s.body.kind) === (view === "area"),
   );
   const mergeable = sheets.filter(
-    (s) => picked.has(s.id) && s.body.kind === "area" && !s.deleted_at,
+    (s) => picked.has(s.id) && Boolean(s.body.kind) && !s.deleted_at,
   );
   const printable = sheets.filter(
     (s) => picked.has(s.id) && !s.body.kind && !s.deleted_at,
@@ -1355,7 +1361,7 @@ export function Workspace() {
                   className={`sheet-row ${picked.has(s.id) ? "is-picked" : ""}`}
                   key={s.id}
                 >
-                  {(s.body.kind === "area" || !s.body.kind) && !s.deleted_at && (
+                  {!s.deleted_at && (
                     <input
                       type="checkbox"
                       aria-label={`Velg ${sheetTitle(s.body)} for ${s.body.kind ? "sammenslåing" : "utskrift"}`}
@@ -1417,7 +1423,7 @@ export function Workspace() {
                           ))}
                         </span>
                       )}
-                      {s.body.kind === "area" &&
+                      {s.body.kind &&
                         mergedInto(s.id, sheets).map((m) => (
                           <span className="merged-into" key={m.id}>
                             <Layers size={11} /> Inngår i {sheetTitle(m.body)}
@@ -1665,7 +1671,7 @@ export function Workspace() {
                     )}
                   </div>
                 )}
-                {draft.kind === "area" &&
+                {draft.kind &&
                   sheet &&
                   mergedInto(sheet.id, sheets).length > 0 && (
                     <div className="merge-note">
