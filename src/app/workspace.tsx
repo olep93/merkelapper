@@ -201,6 +201,7 @@ export function Workspace() {
   } | null>(null);
   const [detailsError, setDetailsError] = useState("");
   const [mergePreview, setMergePreview] = useState<SheetBody | null>(null);
+  const [mergeName, setMergeName] = useState("");
   const [batch, setBatch] = useState<{
     ids: string[];
     done: boolean;
@@ -548,21 +549,23 @@ export function Workspace() {
           setMergeError(
             "En kildeliste er endret. Kontroller de oppdaterte antallene og bekreft på nytt.",
           );
+        else setMergeName(body.title);
         setMergePreview(body);
         return;
       }
+      const named = { ...body, title: mergeName.trim() || body.title };
       const s = await api("/sheets", {
         method: "POST",
         body: JSON.stringify({
           id: crypto.randomUUID(),
           operation: crypto.randomUUID(),
-          body,
+          body: named,
           store: storeId || undefined,
         }),
       });
       accept(s);
-      saved.current = JSON.stringify(body);
-      setDraft(body);
+      saved.current = JSON.stringify(named);
+      setDraft(named);
       setPicked(new Set());
       setMergePreview(null);
       setPreview(false);
@@ -2604,7 +2607,7 @@ export function Workspace() {
             <div className="modal-header">
               <div>
                 <span className="eyebrow">Kontroller sammenslåingen</span>
-                <h2 id="merge-title">{mergePreview.title}</h2>
+                <h2 id="merge-title">{mergeName.trim() || mergePreview.title}</h2>
               </div>
               <button
                 className="icon-button"
@@ -2618,6 +2621,15 @@ export function Workspace() {
             <p className="dialog-description">
               Du får en ny liste. Originallistene beholdes uendret.
             </p>
+            <label>
+              Navn på den nye listen
+              <input
+                maxLength={100}
+                disabled={busy}
+                value={mergeName}
+                onChange={(e) => setMergeName(e.target.value)}
+              />
+            </label>
             <div className="source-chips">
               {mergePreview.sources?.map((source, i) => (
                 <span className="source-chip" key={source.id}>
@@ -2626,7 +2638,7 @@ export function Workspace() {
                 </span>
               ))}
             </div>
-            <div className="merge-preview-lines">
+            <div className="merge-preview-lines batch-lines">
               {mergePreview.lines.map((line) => (
                 <div key={line.id}>
                   <span>
