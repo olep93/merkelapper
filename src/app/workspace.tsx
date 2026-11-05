@@ -1544,6 +1544,27 @@ export function Workspace() {
                       </span>
                     </div>
                   </div>
+                  {stateLocked && !trashed && !readOnly && (
+                    <button
+                      className="button primary"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (
+                          !sheet.printed_at ||
+                          (await ask(
+                            "Åpne for redigering?",
+                            "Listen er markert som skrevet ut. Hvis du åpner den, avbrytes slettefristen, og den må låses på nytt før utskrift.",
+                            "Åpne for redigering",
+                          ))
+                        ) {
+                          setPreview(false);
+                          await action("reopen");
+                        }
+                      }}
+                    >
+                      <Pencil size={18} /> Rediger
+                    </button>
+                  )}
                   {!trashed && !foreign && (
                     <details className="sheet-menu">
                       <summary className="button secondary">
@@ -2296,7 +2317,7 @@ export function Workspace() {
                         <p>
                           <Info size={17} />{" "}
                           {locked
-                            ? "Lappen er låst. Åpne Utskrift for å redigere eller skrive ut."
+                            ? "Lappen er låst. Trykk Rediger for å endre den, eller Se utskrift for å skrive ut."
                             : "Endringene lagres automatisk på kontoen din."}
                         </p>
                         <button
