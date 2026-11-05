@@ -15,6 +15,10 @@ Mobilskanning, private tellingslapper og balansert A3-utskrift i Jobbverktøy.
 - A3 stående, vektorstrekkoder, lesbar EAN og bare tallet i antallskolonnen. Målt tekst og balansert sidefordeling: normalt 10 varer på ett ark, 12 fordelt 6+6. Færre varer får større skrift og mer plass. Ekstremt store antall får bredere antallskolonne.
 - **Markér som skrevet ut** starter en 7-dagers slettefrist. Utskriftsdialog/PDF-åpning alene gjør ikke dette. Lappen blir utilgjengelig ved fristen; Vercel cron sletter forfalte lapper og revisjoner daglig. Gjenåpning avbryter fristen frem til neste utskriftsbekreftelse.
 
+## Skriv ut flere lapper samtidig
+
+Merk av lapper i oversikten og velg **Skriv ut valgte**. Utkast låses først etter eksplisitt valg, tomme lapper tas ikke med, og alle lappene samles i én PDF i valgt rekkefølge. Hver lapp hentes fra sin vanlige PDF-rute og slås sammen i nettleseren. PDF-en lages først og åpnes på et eget trykk, slik at telefonen ikke setter appen på pause mens den jobber. Slettefristen starter først ved **Markér alle som skrevet ut**.
+
 ## Områder med varer flere steder
 
 Egen fane for varer som står mange steder, for eksempel skruer. Lag én liste per område (neste navn foreslås: Skruer 3 gir Skruer 4), merk av listene og velg **Slå sammen til 1 liste**. Da lages en ny liste der like EAN-er summeres og utregningen vises i liten skrift over totalen. Områdelistene beholdes uendret. Endres en av dem etterpå, varsler den sammenslåtte listen om det. Endres en total for hånd på den sammenslåtte listen, fjernes utregningen for den varen.

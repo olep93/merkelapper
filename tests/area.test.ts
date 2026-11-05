@@ -6,6 +6,7 @@ import {
   calculation,
   changedSources,
   countFingerprint,
+  mergedInto,
   mergeSheets,
   inStore,
   mergedTitle,
@@ -234,4 +235,26 @@ test("a store view holds its own shared lists and the user's private lists", () 
     [here, colleague, privateList],
   );
   assert.equal(nextAreaTitle(inStore([elsewhere, here], "a")), "Skruer 2");
+});
+
+test("merging leaves the source lists untouched and links them to the new list", () => {
+  const one = sheet("Skruer 1", [line(A, 12)]);
+  const two = sheet("Skruer 2", [line(A, 8)]);
+  const before = JSON.stringify([one, two]);
+  const body = mergeSheets([one, two]);
+  assert.equal(JSON.stringify([one, two]), before);
+  const merged = {
+    ...sheet("Skruer samlet", body.lines),
+    body,
+  } as unknown as Sheet;
+  const all = [one, two, merged] as unknown as Sheet[];
+  assert.deepEqual(mergedInto(one.id, all), [merged]);
+  assert.deepEqual(mergedInto(merged.id, all), []);
+  assert.deepEqual(
+    mergedInto(one.id, [
+      one,
+      { ...merged, deleted_at: "2026-11-03T10:00:00Z" },
+    ] as unknown as Sheet[]),
+    [],
+  );
 });

@@ -95,6 +95,28 @@ export function changedSources(body: SheetBody, sheets: Sheet[]) {
     );
   });
 }
+// The merged lists a source list has gone into. The source itself stays as it was.
+export function mergedInto(id: string, sheets: Sheet[]) {
+  return sheets.filter(
+    (s) =>
+      s.body.kind === "merged" &&
+      !s.deleted_at &&
+      s.body.sources?.some((source) => source.id === id),
+  );
+}
+const SOURCE_COLORS = [
+  "#2563d9",
+  "#e0701d",
+  "#2a9266",
+  "#a34fc4",
+  "#c9304f",
+  "#0f8fa8",
+  "#a98a12",
+  "#5b6577",
+];
+// One colour per sublist, so a list and its numbers can be matched at a glance.
+export const sourceColor = (index: number) =>
+  SOURCE_COLORS[index % SOURCE_COLORS.length];
 // A calculation only adds information when more than one list holds the item.
 export function calculation(line: Line) {
   return line.parts && line.parts.length > 1

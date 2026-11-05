@@ -9,13 +9,16 @@ import {
   ImagePlus,
   RotateCcw,
 } from "lucide-react";
+import { Dialog } from "./dialog";
 import { validEan } from "@/lib/model";
 export function Scanner({
   onRead,
   onClose,
+  onManual,
 }: {
   onRead: (ean: string) => void;
   onClose: () => void;
+  onManual: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null),
     stream = useRef<MediaStream | null>(null),
@@ -229,12 +232,7 @@ export function Scanner({
     }
   }
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="scan-title"
-    >
+    <Dialog labelledBy="scan-title" onClose={onClose}>
       <section className="scan-modal">
         <div className="modal-header">
           <div>
@@ -318,11 +316,11 @@ export function Scanner({
               onChange={(e) => fromPhoto(e.target.files?.[0])}
             />
           </label>
-          <button className="text-button" onClick={onClose}>
+          <button className="button secondary" onClick={onManual}>
             Skriv EAN manuelt
           </button>
         </div>
       </section>
-    </div>
+    </Dialog>
   );
 }
