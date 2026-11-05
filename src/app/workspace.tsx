@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -38,11 +38,10 @@ import {
   type Line,
 } from "@/lib/model";
 import {
-  AREA_CALC_SIZE,
-  AREA_EAN_SIZE,
   AREA_ROWS_PER_PAGE,
   calculation,
   changedSources,
+  refreshedMerged,
   doubleCounted,
   inStore,
   mergedInto,
@@ -89,6 +88,9 @@ type Layout = {
 type AreaLayout = {
   area: true;
   pages: {
+    rowShare: number;
+    eanSize: number;
+    calcSize: number;
     nameWidth: number;
     quantityWidth: number;
     barcodeWidth: number;
@@ -203,6 +205,7 @@ export function Workspace() {
   const [detailsError, setDetailsError] = useState("");
   const [mergePreview, setMergePreview] = useState<SheetBody | null>(null);
   const [mergeName, setMergeName] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [batch, setBatch] = useState<{
     ids: string[];
     done: boolean;
@@ -587,6 +590,53 @@ export function Workspace() {
       setBusy(false);
     }
   }
+  // Whoever may edit a merged list keeps it in step with its sublists.
+  async function refreshMergedLists() {
+    if (working.current || interactionRef.current.busy || !account) return;
+    for (const s of sheets) {
+      if (
+        s.body.kind !== "merged" ||
+        s.deleted_at ||
+        s.state !== "draft" ||
+        !canEditSheet(s, account)
+      )
+        continue;
+      const next = refreshedMerged(s, sheets);
+      const open = current.current?.id === s.id;
+      if (
+        !next ||
+        (open && JSON.stringify(bodyRef.current) !== saved.current)
+      )
+        continue;
+      working.current = true;
+      try {
+        const data: Sheet = await api(`/sheets/${s.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "save",
+            version: s.version,
+            operation: crypto.randomUUID(),
+            body: next,
+          }),
+        });
+        if (current.current?.id === s.id) {
+          accept(data);
+          saved.current = JSON.stringify(data.body);
+          setDraft(data.body);
+        } else
+          setSheets((list) => list.map((x) => (x.id === s.id ? data : x)));
+      } catch {
+        // A conflict or network error is retried on the next sync.
+      } finally {
+        working.current = false;
+      }
+      return;
+    }
+  }
+  useEffect(() => {
+    const t = setTimeout(() => void refreshMergedLists(), 400);
+    return () => clearTimeout(t);
+  }, [sheets, account, busy]);
   function chooseStore(id: string) {
     setStoreId(id);
     setPicked(new Set());
@@ -620,6 +670,13 @@ export function Workspace() {
     if (action === "lock" && layoutError) {
       setError(layoutError);
       return;
+    }
+    if (action === "lock") {
+      const next = refreshedMerged(current.current, sheets);
+      if (next) {
+        if (!(await persist(next))) return;
+        setDraft(next);
+      }
     }
     setBusy(true);
     working.current = true;
@@ -1084,6 +1141,117 @@ export function Workspace() {
           .toLowerCase()
           .includes(query.toLowerCase())),
   );
+  const inside = (s: Sheet) =>
+    s.body.sources
+      ?.map((source) => inView.find((x) => x.id === source.id))
+      .filter((x): x is Sheet => Boolean(x) && !x!.deleted_at) || [];
+  const renderSheet = (s: Sheet, nested = false): ReactNode => {
+    const children = s.deleted_at ? [] : inside(s),
+      open = expanded.has(s.id);
+    return (
+      <Fragment key={s.id}>
+                <div
+                  className={`sheet-row ${picked.has(s.id) ? "is-picked" : ""} ${nested ? "is-nested" : ""}`}
+                >
+                  {!s.deleted_at && !nested && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Velg ${sheetTitle(s.body)} for ${s.body.kind ? "sammenslåing" : "utskrift"}`}
+                      checked={picked.has(s.id)}
+                      disabled={busy}
+                      onChange={() => togglePicked(s.id)}
+                    />
+                  )}
+                  <button
+                    className={`sheet-card ${sheet?.id === s.id ? "selected" : ""}`}
+                    onClick={() => select(s)}
+                    disabled={busy}
+                  >
+                    <span className={`sheet-symbol ${s.state}`}>
+                      {s.body.kind ? <Layers size={21} /> : <FileText size={21} />}
+                    </span>
+                    <span className="sheet-card-copy">
+                      <span className="sheet-name">
+                        {view === "trash" && (
+                          <span className={`sheet-type ${s.body.kind ? "area" : "label"}`}>
+                            {s.body.kind ? <Layers size={13} aria-hidden="true" /> : <Tag size={13} aria-hidden="true" />}
+                            {s.body.kind === "area" ? "Områdeliste" : s.body.kind === "merged" ? "Sammenslått liste" : "Lapp"}
+                          </span>
+                        )}
+                        <strong>
+                          {s.body.title || `Lapp ${dateLabel(s.body.date)}`}
+                        </strong>
+                        {s.body.location && <small>{s.body.location}</small>}
+                      </span>
+                      <span>
+                        {dateLabel(s.body.date)} · {s.body.lines.length}{" "}
+                        {s.body.lines.length === 1 ? "vare" : "varer"}
+                        {account && s.owner_id !== account.id
+                          ? ` · ${ownerCreatorName(s.owner_name)}`
+                          : ""}
+                      </span>
+                      <span
+                        className={`status small ${s.printed_at ? "printed" : s.state}`}
+                      >
+                        {s.state === "locked" ? (
+                          <LockKeyhole size={11} />
+                        ) : (
+                          <span className="dot" />
+                        )}
+                        {sheetStatus(s)}
+                        {s.body.kind === "merged" ? " · Sammenslått" : ""}
+                        {deletionDeadline(s)
+                          ? " · Slettes " +
+                            dateLabel(osloDate(deletionDeadline(s)!))
+                          : ""}
+                      </span>
+                      {s.body.sources && (
+                        <span className="source-chips">
+                          {s.body.sources.map((source, i) => (
+                            <span className="source-chip" key={source.id}>
+                              <i style={{ background: sourceColor(i) }} />
+                              {source.title}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      {s.body.kind &&
+                        !nested &&
+                        mergedInto(s.id, sheets).map((m) => (
+                          <span className="merged-into" key={m.id}>
+                            <Layers size={11} /> Inngår i {sheetTitle(m.body)}
+                          </span>
+                        ))}
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+        {children.length > 0 && (
+          <button
+            className={`sheet-expand ${nested ? "is-nested" : ""}`}
+            aria-expanded={open}
+            onClick={() =>
+              setExpanded((list) => {
+                const next = new Set(list);
+                if (!next.delete(s.id)) next.add(s.id);
+                return next;
+              })
+            }
+          >
+            <ChevronRight size={16} className={open ? "is-open" : ""} />
+            {open ? "Skjul" : "Vis"} {children.length}{" "}
+            {children.length === 1 ? "underliste" : "underlister"}
+          </button>
+        )}
+        {open && children.map((child) => renderSheet(child, true))}
+      </Fragment>
+    );
+  };
+  const hasParent = (s: Sheet) =>
+    visible.some(
+      (m) => !m.deleted_at && m.body.sources?.some((x) => x.id === s.id),
+    );
+  const listRows = visible.filter((s) => !hasParent(s)).map((s) => renderSheet(s));
   return (
     <>
       <header className="app-header">
@@ -1356,84 +1524,7 @@ export function Workspace() {
                   <span>Status</span>
                 </div>
               )}
-              {visible.map((s) => (
-                <div
-                  className={`sheet-row ${picked.has(s.id) ? "is-picked" : ""}`}
-                  key={s.id}
-                >
-                  {!s.deleted_at && (
-                    <input
-                      type="checkbox"
-                      aria-label={`Velg ${sheetTitle(s.body)} for ${s.body.kind ? "sammenslåing" : "utskrift"}`}
-                      checked={picked.has(s.id)}
-                      disabled={busy}
-                      onChange={() => togglePicked(s.id)}
-                    />
-                  )}
-                  <button
-                    className={`sheet-card ${sheet?.id === s.id ? "selected" : ""}`}
-                    onClick={() => select(s)}
-                    disabled={busy}
-                  >
-                    <span className={`sheet-symbol ${s.state}`}>
-                      {s.body.kind ? <Layers size={21} /> : <FileText size={21} />}
-                    </span>
-                    <span className="sheet-card-copy">
-                      <span className="sheet-name">
-                        {view === "trash" && (
-                          <span className={`sheet-type ${s.body.kind ? "area" : "label"}`}>
-                            {s.body.kind ? <Layers size={13} aria-hidden="true" /> : <Tag size={13} aria-hidden="true" />}
-                            {s.body.kind === "area" ? "Områdeliste" : s.body.kind === "merged" ? "Sammenslått liste" : "Lapp"}
-                          </span>
-                        )}
-                        <strong>
-                          {s.body.title || `Lapp ${dateLabel(s.body.date)}`}
-                        </strong>
-                        {s.body.location && <small>{s.body.location}</small>}
-                      </span>
-                      <span>
-                        {dateLabel(s.body.date)} · {s.body.lines.length}{" "}
-                        {s.body.lines.length === 1 ? "vare" : "varer"}
-                        {account && s.owner_id !== account.id
-                          ? ` · ${ownerCreatorName(s.owner_name)}`
-                          : ""}
-                      </span>
-                      <span
-                        className={`status small ${s.printed_at ? "printed" : s.state}`}
-                      >
-                        {s.state === "locked" ? (
-                          <LockKeyhole size={11} />
-                        ) : (
-                          <span className="dot" />
-                        )}
-                        {sheetStatus(s)}
-                        {s.body.kind === "merged" ? " · Sammenslått" : ""}
-                        {deletionDeadline(s)
-                          ? " · Slettes " +
-                            dateLabel(osloDate(deletionDeadline(s)!))
-                          : ""}
-                      </span>
-                      {s.body.sources && (
-                        <span className="source-chips">
-                          {s.body.sources.map((source, i) => (
-                            <span className="source-chip" key={source.id}>
-                              <i style={{ background: sourceColor(i) }} />
-                              {source.title}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                      {s.body.kind &&
-                        mergedInto(s.id, sheets).map((m) => (
-                          <span className="merged-into" key={m.id}>
-                            <Layers size={11} /> Inngår i {sheetTitle(m.body)}
-                          </span>
-                        ))}
-                    </span>
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              ))}
+              {listRows}
               {!visible.length && (
                 <div className="list-empty">
                   <FolderOpen size={29} />
@@ -1662,11 +1753,12 @@ export function Workspace() {
                         </span>
                       </div>
                     </div>
-                    {changed.length > 0 && (
+                    {changed.length > 0 && (stateLocked || readOnly) && (
                       <p className="merge-note-warning" role="alert">
-                        {changed.map((s) => s.title).join(", ")} er endret etter
-                        sammenslåingen. Slå sammen på nytt for å få med
-                        endringen.
+                        {changed.map((s) => s.title).join(", ")} er endret.{" "}
+                        {readOnly
+                          ? `Tallene oppdateres når ${sheetCreator} har appen åpen.`
+                          : "Trykk Rediger for å oppdatere tallene her."}
                       </p>
                     )}
                   </div>
@@ -1900,7 +1992,7 @@ export function Workspace() {
                                               <small
                                                 key={j}
                                                 style={{
-                                                  fontSize: cqw(AREA_CALC_SIZE),
+                                                  fontSize: cqw(p.calcSize),
                                                 }}
                                               >
                                                 {text}
@@ -1931,7 +2023,7 @@ export function Workspace() {
                                             </strong>
                                             <span
                                               style={{
-                                                fontSize: cqw(AREA_EAN_SIZE),
+                                                fontSize: cqw(p.eanSize),
                                               }}
                                             >
                                               {l.ean}
@@ -1944,7 +2036,7 @@ export function Workspace() {
                                             className="area-paper-row"
                                             key={r.id}
                                             style={{
-                                              flexBasis: `${100 / AREA_ROWS_PER_PAGE}%`,
+                                              flexBasis: `${100 * p.rowShare}%`,
                                               gridTemplateColumns:
                                                 r.side === "right"
                                                   ? `${side}fr ${p.nameWidth}fr ${p.quantityWidth}fr ${p.barcodeWidth}fr`
@@ -2080,7 +2172,13 @@ export function Workspace() {
                     </div>
                   ) : (
                     <>
-                      {!locked && (
+                      {draft.kind === "merged" && (
+                        <p className="merged-hint">
+                          <Info size={16} /> Antallene kommer fra underlistene.
+                          Endre dem der, så oppdateres summene her.
+                        </p>
+                      )}
+                      {!locked && draft.kind !== "merged" && (
                         <div className="add-toolbar">
                           <button
                             className="button primary scan-button"
@@ -2173,7 +2271,7 @@ export function Workspace() {
                                 </small>
                                 <strong>{line.quantity}</strong>
                               </div>
-                              {!locked && (
+                              {!locked && draft.kind !== "merged" && (
                                 <div className="line-actions">
                                   <button
                                     className="icon-button"

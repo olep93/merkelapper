@@ -1341,6 +1341,59 @@ input::placeholder {
   display: flex;
   justify-content: flex-end;
 }
+.merged-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sheet-row.is-nested {
+  background: #f8fafc;
+}
+.sheet-row.is-nested > .sheet-card:first-child,
+.sidebar:has(.sheet-row input) .sheet-row.is-nested > .sheet-card:first-child {
+  margin-left: 72px;
+}
+.sheet-expand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 20px 6px 76px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet-expand.is-nested {
+  padding-left: 112px;
+}
+.sheet-expand svg {
+  transition: transform 0.15s;
+}
+.sheet-expand svg.is-open {
+  transform: rotate(90deg);
+}
+@media (max-width: 720px) {
+  .sheet-expand {
+    min-height: 44px;
+    padding-left: 49px;
+  }
+  .sheet-expand.is-nested {
+    padding-left: 61px;
+  }
+  .sheet-row.is-nested > .sheet-card:first-child,
+  .sidebar:has(.sheet-row input) .sheet-row.is-nested > .sheet-card:first-child {
+    margin-left: 37px;
+  }
+}
 /* A long selection scrolls by itself so the print buttons stay in view on a phone. */
 .batch-lines {
   max-height: 38dvh;

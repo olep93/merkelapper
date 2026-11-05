@@ -112,6 +112,50 @@ export function mergeSheets(sources: Source[], date = osloDate()): SheetBody {
     lines: [...lines.values()],
   };
 }
+// A merged list always follows its sublists. A sublist in the trash stays linked but counts for nothing,
+// so restoring it brings the numbers back. Returns null when the stored list is already correct.
+function resolveMerged(
+  sheet: Sheet,
+  sheets: Sheet[],
+  path: string[] = [],
+): SheetBody {
+  if (sheet.body.kind !== "merged" || !sheet.body.sources?.length)
+    return sheet.body;
+  const live = sheet.body.sources
+    .map((source) =>
+      sheets.find(
+        (s) => s.id === source.id && !s.deleted_at && !path.includes(s.id),
+      ),
+    )
+    .filter((s): s is Sheet => Boolean(s));
+  if (!live.length) return sheet.body;
+  const next = mergeSheets(
+    live.map((s) => ({
+      id: s.id,
+      body: resolveMerged(s, sheets, [...path, sheet.id]),
+    })),
+    sheet.body.date,
+  );
+  const known = new Map(sheet.body.lines.map((l) => [l.ean, l]));
+  return {
+    ...sheet.body,
+    sources: [
+      ...next.sources!,
+      ...sheet.body.sources.filter(
+        (source) => !next.sources!.some((s) => s.id === source.id),
+      ),
+    ],
+    lines: next.lines.map((l) => ({
+      ...l,
+      id: known.get(l.ean)?.id ?? l.id,
+      name: known.get(l.ean)?.name ?? l.name,
+    })),
+  };
+}
+export function refreshedMerged(sheet: Sheet, sheets: Sheet[]) {
+  const next = resolveMerged(sheet, sheets);
+  return JSON.stringify(next) === JSON.stringify(sheet.body) ? null : next;
+}
 export function changedSources(body: SheetBody, sheets: Sheet[]) {
   return (body.sources || []).filter((source) => {
     const sheet = sheets.find((s) => s.id === source.id);

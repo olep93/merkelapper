@@ -320,6 +320,8 @@ export function planPages(
 export const AREA_CONTENT_TOP = PAGE_H - MARGIN - 100;
 export const AREA_ROW_HEIGHT =
   (AREA_CONTENT_TOP - CONTENT_BOTTOM) / AREA_ROWS_PER_PAGE;
+// Rows grow to fill the sheet when there is room, up to the point where a bigger row stops helping.
+export const AREA_MAX_ROW_HEIGHT = 84;
 export type AreaRow = {
   line: Line;
   side: "left" | "right";
@@ -333,13 +335,24 @@ export type AreaPage = {
   nameWidth: number;
   quantityWidth: number;
   barcodeWidth: number;
+  rowHeight: number;
+  rowShare: number;
+  eanSize: number;
+  calcSize: number;
 };
-function fitAreaName(name: string, bold: PDFFont, width: number) {
-  for (let size = 14; size >= 9; size -= 0.5) {
+function fitAreaName(
+  name: string,
+  bold: PDFFont,
+  width: number,
+  rowHeight: number,
+  eanSize: number,
+  scale: number,
+) {
+  for (let size = Math.min(26, 14 * scale); size >= 9; size -= 0.5) {
     const lines = wrap(name, bold, size, width);
     if (
       lines.length <= 2 &&
-      lines.length * size * 1.14 + AREA_EAN_SIZE + 2 <= AREA_ROW_HEIGHT - 3
+      lines.length * size * 1.14 + eanSize + 2 <= rowHeight - 3
     )
       return { nameLines: lines, nameSize: size };
   }
@@ -350,26 +363,40 @@ function fitAreaName(name: string, bold: PDFFont, width: number) {
     rest = rest.slice(0, -1);
   return { nameLines: [first, rest.trimEnd() + "…"], nameSize: 9 };
 }
-function areaCalculation(line: Line, font: PDFFont, width: number) {
+function areaCalculation(
+  line: Line,
+  font: PDFFont,
+  width: number,
+  size: number,
+) {
   const text = calculation(line);
   if (!text) return [];
-  const lines = wrap(text, font, AREA_CALC_SIZE, width);
+  const lines = wrap(text, font, size, width);
   return lines.length <= 2 ? lines : [`Sum av ${line.parts!.length} lister`];
 }
-// One row per item at a fixed height. Same-side barcodes stay two rows apart.
+// Items spread evenly over as few sheets as possible, and the rows scale to use the space.
+// Same-side barcodes stay two rows apart.
 export function planAreaPages(
   lines: Line[],
   font: PDFFont,
   bold: PDFFont,
 ): AreaPage[] {
+  const available = AREA_CONTENT_TOP - CONTENT_BOTTOM,
+    sheets = Math.ceil(lines.length / AREA_ROWS_PER_PAGE),
+    fullest = Math.ceil(lines.length / sheets),
+    rowHeight = Math.min(AREA_MAX_ROW_HEIGHT, available / fullest),
+    scale = rowHeight / AREA_ROW_HEIGHT,
+    eanSize = AREA_EAN_SIZE * Math.min(1.5, scale),
+    calcSize = AREA_CALC_SIZE * Math.min(1.6, scale),
+    wide = 22 * Math.min(1.5, scale);
   const quantityWidth = Math.max(
     28 * MM,
     ...lines.map((l) =>
       Math.min(
         48 * MM,
         Math.max(
-          bold.widthOfTextAtSize(String(l.quantity), 22),
-          font.widthOfTextAtSize(calculation(l), AREA_CALC_SIZE),
+          bold.widthOfTextAtSize(String(l.quantity), wide),
+          font.widthOfTextAtSize(calculation(l), calcSize),
         ) + 8,
       ),
     ),
@@ -377,14 +404,30 @@ export function planAreaPages(
   const nameWidth =
     PAGE_W - 2 * MARGIN - 2 * (quantityWidth + BARCODE_COLUMN_WIDTH);
   const pages: AreaPage[] = [];
-  for (let i = 0; i < lines.length; i += AREA_ROWS_PER_PAGE)
+  let start = 0;
+  for (let sheet = 0; sheet < sheets; sheet++) {
+    const count = Math.ceil((lines.length - start) / (sheets - sheet));
     pages.push({
       nameWidth,
       quantityWidth,
       barcodeWidth: BARCODE_COLUMN_WIDTH,
-      rows: lines.slice(i, i + AREA_ROWS_PER_PAGE).map((line, row) => {
-        const calcLines = areaCalculation(line, font, quantityWidth - 6);
-        let quantitySize = calcLines.length > 1 ? 18 : calcLines.length ? 22 : 26;
+      rowHeight,
+      rowShare: rowHeight / available,
+      eanSize,
+      calcSize,
+      rows: lines.slice(start, start + count).map((line, row) => {
+        const calcLines = areaCalculation(
+          line,
+          font,
+          quantityWidth - 6,
+          calcSize,
+        );
+        const room =
+          rowHeight - 6 - calcLines.length * (calcSize + 1) - (calcLines.length ? 3 : 0);
+        let quantitySize = Math.min(
+          room / 0.8,
+          (calcLines.length > 1 ? 18 : calcLines.length ? 22 : 26) * scale,
+        );
         while (
           quantitySize > 10 &&
           bold.widthOfTextAtSize(String(line.quantity), quantitySize) >
@@ -394,11 +437,20 @@ export function planAreaPages(
         return {
           line,
           side: row % 2 ? "left" : "right",
-          ...fitAreaName(line.name, bold, nameWidth - 12),
+          ...fitAreaName(
+            line.name,
+            bold,
+            nameWidth - 12,
+            rowHeight,
+            eanSize,
+            scale,
+          ),
           quantitySize,
           calcLines,
         };
       }),
     });
+    start += count;
+  }
   return pages;
 }

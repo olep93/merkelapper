@@ -8,6 +8,7 @@ import {
   countFingerprint,
   doubleCounted,
   mergedInto,
+  refreshedMerged,
   storeForNewSheet,
   mergeSheets,
   inStore,
@@ -162,7 +163,12 @@ test("rows alternate sides, restart per page and hold at most 25 per page", asyn
   const pages = planAreaPages(many(26), font, bold);
   assert.deepEqual(
     pages.map((p) => p.rows.length),
-    [AREA_ROWS_PER_PAGE, 1],
+    [13, 13],
+  );
+  assert.ok(
+    planAreaPages(many(AREA_ROWS_PER_PAGE * 3 + 1), font, bold).every(
+      (p) => p.rows.length <= AREA_ROWS_PER_PAGE,
+    ),
   );
   assert.deepEqual(
     pages[0].rows.slice(0, 4).map((r) => r.side),
@@ -306,4 +312,62 @@ test("a list cannot be merged together with a list that already contains it", ()
     list: "Skruer 2",
     within: outer.body.title,
   });
+});
+
+test("items spread evenly over sheets and rows grow to use the space", async () => {
+  const { font, bold } = await fonts();
+  const counts = (n: number) =>
+    planAreaPages(many(n), font, bold).map((p) => p.rows.length);
+  assert.deepEqual(counts(37), [19, 18]);
+  assert.deepEqual(counts(26), [13, 13]);
+  assert.deepEqual(counts(25), [25]);
+  assert.deepEqual(counts(51), [17, 17, 17]);
+  const full = planAreaPages(many(25), font, bold)[0],
+    spread = planAreaPages(many(37), font, bold)[0],
+    few = planAreaPages(many(3), font, bold)[0];
+  assert.ok(spread.rowHeight > full.rowHeight);
+  assert.ok(spread.rows[0].nameSize >= full.rows[0].nameSize);
+  assert.ok(spread.rows[0].quantitySize > full.rows[0].quantitySize);
+  assert.equal(few.rowHeight, 84);
+  for (const p of [full, spread, few])
+    assert.ok(p.rows.length * p.rowHeight <= (p.rowHeight / p.rowShare) + 0.01);
+});
+
+test("a merged list follows its sublists and keeps its own name", () => {
+  const one = sheet("Skruer 1", [line(A, 12)]),
+    two = sheet("Skruer 2", [line(A, 8), line(B, 3)]);
+  const merged = {
+    ...sheet("x", []),
+    body: { ...mergeSheets([one, two]), title: "Mitt navn" },
+  };
+  assert.equal(refreshedMerged(merged, [one, two, merged]), null);
+  const edited = {
+    ...two,
+    body: { ...two.body, lines: [line(A, 10), line(C, 5)] },
+  };
+  const next = refreshedMerged(merged, [one, edited, merged])!;
+  assert.equal(next.title, "Mitt navn");
+  assert.equal(next.lines.find((l) => l.ean === A)?.quantity, 22);
+  assert.equal(calculation(next.lines.find((l) => l.ean === A)!), "12 + 10");
+  assert.equal(next.lines.find((l) => l.ean === C)?.quantity, 5);
+  assert.equal(next.lines.find((l) => l.ean === B), undefined);
+  assert.equal(
+    next.lines.find((l) => l.ean === A)?.id,
+    merged.body.lines.find((l) => l.ean === A)?.id,
+  );
+  assert.ok(bodySchema.safeParse(next).success);
+});
+
+test("a sublist in the trash stops counting and comes back when restored", () => {
+  const one = sheet("Skruer 1", [line(A, 12)]),
+    two = sheet("Skruer 2", [line(A, 8)]);
+  const merged = { ...sheet("x", []), body: mergeSheets([one, two]) };
+  const gone = { ...two, deleted_at: "2026-11-05T10:00:00Z" };
+  const without = refreshedMerged(merged, [one, gone, merged])!;
+  assert.equal(without.lines[0].quantity, 12);
+  assert.equal(without.sources?.length, 2);
+  assert.ok(bodySchema.safeParse(without).success);
+  const after = { ...merged, body: without };
+  const back = refreshedMerged(after, [one, two, after])!;
+  assert.equal(back.lines[0].quantity, 20);
 });

@@ -17,9 +17,7 @@ import {
   MARGIN,
   CONTENT_TOP,
   AREA_CONTENT_TOP,
-  AREA_ROW_HEIGHT,
 } from "./layout";
-import { AREA_CALC_SIZE, AREA_EAN_SIZE } from "./area";
 import { dateLabel, type SheetBody } from "./model";
 // EAN encoding tables. Bars are drawn directly as vectors at X=0.33mm.
 const L = [
@@ -195,7 +193,7 @@ async function makeAreaPdf(
       drawCentered(page, label, x, width, AREA_CONTENT_TOP + 7, 11, bold);
     let y = AREA_CONTENT_TOP;
     for (const r of layout.rows) {
-      const bottom = y - AREA_ROW_HEIGHT;
+      const bottom = y - layout.rowHeight;
       page.drawLine({
         start: { x: MARGIN, y: bottom },
         end: { x: PAGE_W - MARGIN, y: bottom },
@@ -210,8 +208,8 @@ async function makeAreaPdf(
           color: lineColor,
         });
       const lineHeight = r.nameSize * 1.14,
-        textHeight = r.nameLines.length * lineHeight + AREA_EAN_SIZE + 2;
-      let ty = y - (AREA_ROW_HEIGHT - textHeight) / 2 - r.nameSize * 0.85;
+        textHeight = r.nameLines.length * lineHeight + layout.eanSize + 2;
+      let ty = y - (layout.rowHeight - textHeight) / 2 - r.nameSize * 0.85;
       for (const name of r.nameLines) {
         drawCentered(page, name, nameX + 6, layout.nameWidth - 12, ty, r.nameSize, bold);
         ty -= lineHeight;
@@ -221,8 +219,8 @@ async function makeAreaPdf(
         r.line.ean,
         nameX + 6,
         layout.nameWidth - 12,
-        ty + lineHeight - r.nameSize * 0.25 - 2 - AREA_EAN_SIZE * 0.8,
-        AREA_EAN_SIZE,
+        ty + lineHeight - r.nameSize * 0.25 - 2 - layout.eanSize * 0.8,
+        layout.eanSize,
         font,
         eanColor,
       );
@@ -243,11 +241,11 @@ async function makeAreaPdf(
         color: lineColor,
       });
       const calcGap = r.calcLines.length ? 3 : 0,
-        calcHeight = r.calcLines.length * (AREA_CALC_SIZE + 1) + calcGap;
-      let cy = y - (AREA_ROW_HEIGHT - calcHeight - r.quantitySize * 0.72) / 2;
+        calcHeight = r.calcLines.length * (layout.calcSize + 1) + calcGap;
+      let cy = y - (layout.rowHeight - calcHeight - r.quantitySize * 0.72) / 2;
       for (const calc of r.calcLines) {
-        cy -= AREA_CALC_SIZE + 1;
-        drawCentered(page, calc, qtyX, layout.quantityWidth, cy + 1.5, AREA_CALC_SIZE, font);
+        cy -= layout.calcSize + 1;
+        drawCentered(page, calc, qtyX, layout.quantityWidth, cy + 1.5, layout.calcSize, font);
       }
       drawCentered(
         page,
@@ -267,7 +265,7 @@ async function makeAreaPdf(
         bits,
         barcodeX + (layout.barcodeWidth - total) / 2 + quiet * xDim,
         bottom + 9,
-        AREA_ROW_HEIGHT - 12.8,
+        layout.rowHeight - 12.8,
         2,
       );
       drawCentered(page, r.line.ean, barcodeX, layout.barcodeWidth, bottom + 1.2, 7, font);

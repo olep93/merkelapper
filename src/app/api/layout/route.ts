@@ -15,6 +15,9 @@ export async function POST(request: Request) {
           nameWidth: p.nameWidth,
           quantityWidth: p.quantityWidth,
           barcodeWidth: p.barcodeWidth,
+          rowShare: p.rowShare,
+          eanSize: p.eanSize,
+          calcSize: p.calcSize,
           count: p.rows.length,
           lines: p.rows.map((r) => ({
             id: r.line.id,
