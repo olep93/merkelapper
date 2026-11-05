@@ -2161,6 +2161,25 @@ input:disabled {
 .area-paper-name > span {
   color: #0b3d91;
 }
+.area-paper-breakdown {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 0.8cqw;
+  color: #404040;
+  line-height: 1.2;
+}
+.area-paper-breakdown div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5cqw;
+  white-space: nowrap;
+}
+.area-paper-breakdown span {
+  overflow: hidden;
+  text-overflow: clip;
+}
 .area-paper-quantity {
   display: flex;
   flex-direction: column;

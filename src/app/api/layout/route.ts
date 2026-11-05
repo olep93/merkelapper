@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     if (result.data.kind)
       return Response.json({
         area: true,
-        pages: planAreaPages(result.data.lines, font, bold).map((p) => ({
+        pages: planAreaPages(result.data.lines, font, bold, result.data.sources).map((p) => ({
           nameWidth: p.nameWidth,
           quantityWidth: p.quantityWidth,
           barcodeWidth: p.barcodeWidth,
@@ -26,6 +26,8 @@ export async function POST(request: Request) {
             nameSize: r.nameSize,
             quantitySize: r.quantitySize,
             calcLines: r.calcLines,
+            breakdown: r.breakdown,
+            breakdownSize: r.breakdownSize,
           })),
         })),
       });

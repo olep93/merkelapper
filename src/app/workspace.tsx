@@ -102,6 +102,8 @@ type AreaLayout = {
       nameSize: number;
       quantitySize: number;
       calcLines: string[];
+      breakdown: { label: string; quantity: string }[];
+      breakdownSize: number;
     }[];
   }[];
 };
@@ -2030,7 +2032,22 @@ export function Workspace() {
                                             </span>
                                           </div>
                                         );
-                                        const blank = <div key="blank" />;
+                                        const blank = (
+                                          <div
+                                            className="area-paper-breakdown"
+                                            key="blank"
+                                            style={{
+                                              fontSize: cqw(r.breakdownSize),
+                                            }}
+                                          >
+                                            {r.breakdown.map((part) => (
+                                              <div key={part.label}>
+                                                <span>{part.label}</span>
+                                                <b>{part.quantity}</b>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        );
                                         return (
                                           <div
                                             className="area-paper-row"

@@ -329,6 +329,8 @@ export type AreaRow = {
   nameSize: number;
   quantitySize: number;
   calcLines: string[];
+  breakdown: { label: string; quantity: string }[];
+  breakdownSize: number;
 };
 export type AreaPage = {
   rows: AreaRow[];
@@ -374,12 +376,49 @@ function areaCalculation(
   const lines = wrap(text, font, size, width);
   return lines.length <= 2 ? lines : [`Sum av ${line.parts!.length} lister`];
 }
+// The free side of a row shows where the total was found. Rows without room end with a count of the rest.
+function areaBreakdown(
+  line: Line,
+  sources: { title: string }[] | undefined,
+  font: PDFFont,
+  width: number,
+  rowHeight: number,
+  scale: number,
+) {
+  const parts = sources ? line.parts || [] : [];
+  if (!parts.length) return { breakdown: [], breakdownSize: 0 };
+  let size = Math.min(12, 8.5 * scale);
+  while (size > 6.5 && parts.length * size * 1.2 > rowHeight - 4) size -= 0.5;
+  const fits = Math.max(1, Math.floor((rowHeight - 4) / (size * 1.2))),
+    shown = parts.length > fits ? parts.slice(0, fits - 1) : parts;
+  const breakdown = shown.map((part) => {
+    const quantity = String(part.quantity),
+      room = width - font.widthOfTextAtSize(` ${quantity}`, size);
+    let label = `${sources![part.source]?.title ?? "Slettet"}:`;
+    if (font.widthOfTextAtSize(label, size) > room) {
+      label = label.slice(0, -1);
+      while (label && font.widthOfTextAtSize(label + "…:", size) > room)
+        label = label.slice(0, -1);
+      label = label.trimEnd() + "…:";
+    }
+    return { label, quantity };
+  });
+  if (shown.length < parts.length)
+    breakdown.push({
+      label: `+ ${parts.length - shown.length} til:`,
+      quantity: String(
+        parts.slice(shown.length).reduce((n, p) => n + p.quantity, 0),
+      ),
+    });
+  return { breakdown, breakdownSize: size };
+}
 // Items spread evenly over as few sheets as possible, and the rows scale to use the space.
 // Same-side barcodes stay two rows apart.
 export function planAreaPages(
   lines: Line[],
   font: PDFFont,
   bold: PDFFont,
+  sources?: { title: string }[],
 ): AreaPage[] {
   const available = AREA_CONTENT_TOP - CONTENT_BOTTOM,
     sheets = Math.ceil(lines.length / AREA_ROWS_PER_PAGE),
@@ -447,6 +486,14 @@ export function planAreaPages(
           ),
           quantitySize,
           calcLines,
+          ...areaBreakdown(
+            line,
+            sources,
+            font,
+            quantityWidth + BARCODE_COLUMN_WIDTH - 16,
+            rowHeight,
+            scale,
+          ),
         };
       }),
     });

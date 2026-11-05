@@ -131,7 +131,7 @@ async function makeAreaPdf(
   creatorName?: string,
 ) {
   const { doc, font, bold } = await fonts();
-  const pages = planAreaPages(body.lines, font, bold);
+  const pages = planAreaPages(body.lines, font, bold, body.sources);
   doc.setTitle(`Merkelapp ${id.slice(0, 8)} - revisjon ${revision}`);
   doc.setCreator("Jobbverktøy - Merkelapp");
   const viewerPrefs = doc.catalog.getOrCreateViewerPreferences();
@@ -256,6 +256,33 @@ async function makeAreaPdf(
         r.quantitySize,
         bold,
       );
+      const freeX = r.side === "right" ? MARGIN : nameX + layout.nameWidth,
+        lineStep = r.breakdownSize * 1.2;
+      let by =
+        y -
+        (layout.rowHeight - r.breakdown.length * lineStep) / 2 -
+        r.breakdownSize * 0.95;
+      for (const part of r.breakdown) {
+        page.drawText(part.label, {
+          x: freeX + 8,
+          y: by,
+          size: r.breakdownSize,
+          font,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+        page.drawText(part.quantity, {
+          x:
+            freeX +
+            side -
+            8 -
+            bold.widthOfTextAtSize(part.quantity, r.breakdownSize),
+          y: by,
+          size: r.breakdownSize,
+          font: bold,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+        by -= lineStep;
+      }
       const bits = eanBits(r.line.ean),
         quiet = r.line.ean.length === 13 ? 11 : 7,
         xDim = 0.33 * MM,

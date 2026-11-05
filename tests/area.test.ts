@@ -371,3 +371,42 @@ test("a sublist in the trash stops counting and comes back when restored", () =>
   const back = refreshedMerged(after, [one, two, after])!;
   assert.equal(back.lines[0].quantity, 20);
 });
+
+test("the free side of a row lists where the total was found", async () => {
+  const { font, bold } = await fonts();
+  const sources = [
+    { title: "Varemottak Butikk" },
+    { title: "Varemottak Drive-In" },
+    { title: "Gulvavd" },
+  ];
+  const parts = [
+    { source: 0, quantity: 44 },
+    { source: 1, quantity: 44 },
+    { source: 2, quantity: 44 },
+  ];
+  const [page] = planAreaPages(
+    [{ ...line(A, 132), parts }, line(B, 5)],
+    font,
+    bold,
+    sources,
+  );
+  assert.deepEqual(page.rows[0].breakdown, [
+    { label: "Varemottak Butikk:", quantity: "44" },
+    { label: "Varemottak Drive-In:", quantity: "44" },
+    { label: "Gulvavd:", quantity: "44" },
+  ]);
+  assert.deepEqual(page.rows[1].breakdown, []);
+  const crowded = Array.from({ length: 25 }, (_, i) => ({
+    ...line(A, 40),
+    parts: Array.from({ length: 8 }, (_, source) => ({
+      source,
+      quantity: 5,
+    })),
+  }));
+  const titles = Array.from({ length: 8 }, (_, i) => ({ title: `Liste ${i}` }));
+  const row = planAreaPages(crowded, font, bold, titles)[0].rows[0];
+  assert.ok(row.breakdown.length < 8);
+  assert.match(row.breakdown.at(-1)!.label, /^\+ \d+ til:/);
+  const total = row.breakdown.reduce((n, b) => n + Number(b.quantity), 0);
+  assert.equal(total, 40);
+});
