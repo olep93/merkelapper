@@ -53,6 +53,7 @@ import {
 import { ownerCreatorName } from "@/lib/creator-name";
 import { Dialog } from "./dialog";
 import {
+  canEditSheet,
   deletionDeadline,
   mergeContentsMatch,
   matchesSheetFilter,
@@ -153,6 +154,7 @@ export function Workspace() {
       name: string;
       email: string;
       creatorName: string;
+      canEditOthers?: boolean;
     } | null>(null),
     [loading, setLoading] = useState(true),
     [gate, setGate] = useState("");
@@ -1032,10 +1034,11 @@ export function Workspace() {
     }
   }
   const trashed = Boolean(sheet?.deleted_at);
-  const readOnly = Boolean(sheet && account && sheet.owner_id !== account.id),
+  const foreign = Boolean(sheet && account && sheet.owner_id !== account.id),
+    readOnly = Boolean(sheet && account && !canEditSheet(sheet, account)),
     stateLocked = sheet?.state === "locked" || trashed,
     locked = stateLocked || readOnly,
-    sheetCreator = readOnly
+    sheetCreator = foreign
       ? ownerCreatorName(sheet?.owner_name ?? null)
       : account?.creatorName,
     storeName = account?.stores.find((s) => s.id === storeId)?.name,
@@ -1541,7 +1544,7 @@ export function Workspace() {
                       </span>
                     </div>
                   </div>
-                  {!trashed && !readOnly && (
+                  {!trashed && !foreign && (
                     <details className="sheet-menu">
                       <summary className="button secondary">
                         <Ellipsis size={18} />
@@ -1584,11 +1587,12 @@ export function Workspace() {
                     )}
                   </div>
                 )}
-                {readOnly && (
+                {foreign && (
                   <div className="merge-note">
                     <p>
-                      {sheetCreator} har laget listen. Du kan se den og slå den
-                      sammen med andre, men bare {sheetCreator} kan endre den.
+                      {readOnly
+                        ? `${sheetCreator} har laget listen. Du kan se den og slå den sammen med andre, men bare ${sheetCreator} kan endre den.`
+                        : `${sheetCreator} har laget listen. Du kan endre navn og innhold, men ikke slette den eller markere den som skrevet ut.`}
                     </p>
                   </div>
                 )}
@@ -2250,6 +2254,7 @@ export function Workspace() {
                             </p>
                           )}
                         </div>
+                        {!foreign && (
                         <div className="print-step">
                           <h3>3. Bekreft etter utskrift</h3>
                           <p>
@@ -2268,6 +2273,7 @@ export function Workspace() {
                               : "Markér som skrevet ut"}
                           </button>
                         </div>
+                        )}
                         {locked && (
                           <div className="print-step">
                             <button

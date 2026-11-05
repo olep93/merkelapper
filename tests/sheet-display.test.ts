@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  canEditSheet,
   deletionDeadline,
   matchesSheetFilter,
   mergeContentsMatch,
@@ -73,6 +74,18 @@ test("merge confirmation ignores newly allocated IDs but detects changed counts 
   );
   assert.equal(
     mergeContentsMatch(first, { ...second, location: "Ny plass" }),
+    false,
+  );
+});
+
+test("only the extended account can edit a colleague's shared list", () => {
+  const shared = { owner_id: "kari", store_id: "tonsberg" },
+    privateSheet = { owner_id: "kari", store_id: null };
+  assert.equal(canEditSheet(shared, { id: "kari" }), true);
+  assert.equal(canEditSheet(shared, { id: "ola" }), false);
+  assert.equal(canEditSheet(shared, { id: "ola", canEditOthers: true }), true);
+  assert.equal(
+    canEditSheet(privateSheet, { id: "ola", canEditOthers: true }),
     false,
   );
 });

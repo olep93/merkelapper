@@ -11,6 +11,7 @@ export async function GET() {
       name: user.user_metadata.display_name || user.email,
       email: user.email,
       creatorName: creatorName(user),
+      canEditOthers: user.app_metadata.merkelapp_editor === true,
     });
   } catch (e) {
     return failure(e);

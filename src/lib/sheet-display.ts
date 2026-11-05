@@ -1,5 +1,15 @@
 import type { Sheet, SheetBody } from "./model";
 export type SheetFilter = "all" | "draft" | "locked" | "printed";
+// The database makes the final decision. This only decides what the screen offers.
+export function canEditSheet(
+  sheet: Pick<Sheet, "owner_id" | "store_id">,
+  account: { id: string; canEditOthers?: boolean },
+) {
+  return (
+    sheet.owner_id === account.id ||
+    Boolean(account.canEditOthers && sheet.store_id)
+  );
+}
 export function sheetStatus(sheet: Sheet) {
   if (sheet.deleted_at) return "I papirkurven";
   if (sheet.printed_at) return "Utskrevet";
