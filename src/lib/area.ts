@@ -152,9 +152,23 @@ function resolveMerged(
     })),
   };
 }
+// The database stores JSON with its own key order, so only the content can be compared.
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([k, v]) => [k, canonical(v)]),
+  );
+}
 export function refreshedMerged(sheet: Sheet, sheets: Sheet[]) {
   const next = resolveMerged(sheet, sheets);
-  return JSON.stringify(next) === JSON.stringify(sheet.body) ? null : next;
+  return JSON.stringify(canonical(next)) ===
+    JSON.stringify(canonical(sheet.body))
+    ? null
+    : next;
 }
 export function changedSources(body: SheetBody, sheets: Sheet[]) {
   return (body.sources || []).filter((source) => {

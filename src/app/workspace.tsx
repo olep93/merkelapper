@@ -286,6 +286,7 @@ export function Workspace() {
   const current = useRef<Sheet | null>(null),
     bodyRef = useRef(draft),
     working = useRef(false),
+    refreshing = useRef(false),
     saved = useRef(""),
     nameInput = useRef<HTMLInputElement>(null),
     quantityInput = useRef<HTMLInputElement>(null);
@@ -594,7 +595,13 @@ export function Workspace() {
   }
   // Whoever may edit a merged list keeps it in step with its sublists.
   async function refreshMergedLists() {
-    if (working.current || interactionRef.current.busy || !account) return;
+    if (
+      refreshing.current ||
+      working.current ||
+      interactionRef.current.busy ||
+      !account
+    )
+      return;
     for (const s of sheets) {
       if (
         s.body.kind !== "merged" ||
@@ -610,7 +617,8 @@ export function Workspace() {
         (open && JSON.stringify(bodyRef.current) !== saved.current)
       )
         continue;
-      working.current = true;
+      // Runs in the background, so it must not hold back navigation or the user's own saves.
+      refreshing.current = true;
       try {
         const data: Sheet = await api(`/sheets/${s.id}`, {
           method: "PATCH",
@@ -621,7 +629,10 @@ export function Workspace() {
             body: next,
           }),
         });
-        if (current.current?.id === s.id) {
+        if (
+          current.current?.id === s.id &&
+          JSON.stringify(bodyRef.current) === saved.current
+        ) {
           accept(data);
           saved.current = JSON.stringify(data.body);
           setDraft(data.body);
@@ -630,7 +641,7 @@ export function Workspace() {
       } catch {
         // A conflict or network error is retried on the next sync.
       } finally {
-        working.current = false;
+        refreshing.current = false;
       }
       return;
     }

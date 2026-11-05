@@ -341,6 +341,19 @@ test("a merged list follows its sublists and keeps its own name", () => {
     body: { ...mergeSheets([one, two]), title: "Mitt navn" },
   };
   assert.equal(refreshedMerged(merged, [one, two, merged]), null);
+  // The database returns the same content with its keys in another order.
+  const reorder = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(reorder)
+      : value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.entries(value)
+              .reverse()
+              .map(([k, v]) => [k, reorder(v)]),
+          )
+        : value;
+  const stored = { ...merged, body: reorder(merged.body) as SheetBody };
+  assert.equal(refreshedMerged(stored, [one, two, stored]), null);
   const edited = {
     ...two,
     body: { ...two.body, lines: [line(A, 10), line(C, 5)] },
