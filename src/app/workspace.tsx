@@ -1090,7 +1090,7 @@ export function Workspace() {
             <nav className="app-nav" aria-label="Hovedmeny">
               {(
                 [
-                  ["sheets", "Merkelapp", FileText],
+                  ["sheets", "Varetellingslapp", FileText],
                   ["area", "Områder med varer flere steder", Layers],
                   ["trash", "Papirkurv", Trash2],
                 ] as const
