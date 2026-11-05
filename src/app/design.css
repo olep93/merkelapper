@@ -1336,6 +1336,11 @@ input::placeholder {
   display: inline-block;
   margin-right: 5px;
 }
+.metadata-save {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
 /* A long selection scrolls by itself so the print buttons stay in view on a phone. */
 .batch-lines {
   max-height: 38dvh;

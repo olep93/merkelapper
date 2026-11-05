@@ -1,4 +1,5 @@
 import { requireUser, failure, checkOrigin, ApiError } from "@/lib/supabase";
+import { storeForNewSheet } from "@/lib/area";
 import { bodySchema } from "@/lib/model";
 import { z } from "zod";
 export async function GET(request: Request) {
@@ -30,13 +31,19 @@ export async function POST(request: Request) {
       .safeParse(await request.json());
     if (!parsed.success) throw new ApiError(parsed.error.issues[0].message);
     const p = parsed.data;
+    let stores: { id: string }[] = [];
+    if (p.body.kind && !p.store) {
+      const mine = await db.rpc("merkelapp_my_stores");
+      if (mine.error) throw mine.error;
+      stores = mine.data;
+    }
     const { data, error } = await db.rpc("merkelapp_write", {
       p_id: p.id,
       p_version: 0,
       p_operation: p.operation,
       p_action: "create",
       p_body: p.body,
-      p_store: p.store ?? null,
+      p_store: storeForNewSheet(p.body, p.store, stores) ?? null,
     });
     if (error) {
       if (error.message.includes("store_denied"))

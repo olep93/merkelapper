@@ -1756,6 +1756,21 @@ export function Workspace() {
                         }}
                       />
                     </label>
+                    <div className="metadata-save">
+                      <button
+                        className={`button ${dirty ? "primary" : "secondary"}`}
+                        disabled={!dirty || busy || conflict}
+                        onClick={() => void persist(bodyRef.current)}
+                      >
+                        {dirty ? (
+                          "Lagre"
+                        ) : (
+                          <>
+                            <Check size={17} /> Lagret
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div className="editor-tabs" aria-label="Visning av lappen">

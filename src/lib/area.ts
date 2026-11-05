@@ -11,6 +11,15 @@ const titleBase = (title: string) => title.replace(/\s*\d+$/, "").trim();
 export function inStore(sheets: Sheet[], storeId: string) {
   return sheets.filter((s) => !s.store_id || s.store_id === storeId);
 }
+// A page opened before an update may not send a store. A list is still shared when the choice is clear.
+export function storeForNewSheet(
+  body: SheetBody,
+  requested: string | undefined,
+  stores: { id: string }[],
+) {
+  if (requested || !body.kind) return requested;
+  return stores.length === 1 ? stores[0].id : undefined;
+}
 // Suggests the next name in a numbered series: "Skruer 3" gives "Skruer 4".
 export function nextAreaTitle(sheets: Sheet[]) {
   const areas = sheets.filter((s) => s.body.kind === "area" && !s.deleted_at);

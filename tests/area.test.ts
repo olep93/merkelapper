@@ -7,6 +7,7 @@ import {
   changedSources,
   countFingerprint,
   mergedInto,
+  storeForNewSheet,
   mergeSheets,
   inStore,
   mergedTitle,
@@ -257,4 +258,15 @@ test("merging leaves the source lists untouched and links them to the new list",
     ] as unknown as Sheet[]),
     [],
   );
+});
+
+test("a new area list without a chosen store goes to the user's only store", () => {
+  const area = sheet("Skruer 1", []).body,
+    label = { ...area, kind: undefined },
+    one = [{ id: "a" }],
+    two = [{ id: "a" }, { id: "b" }];
+  assert.equal(storeForNewSheet(area, undefined, one), "a");
+  assert.equal(storeForNewSheet(area, undefined, two), undefined);
+  assert.equal(storeForNewSheet(area, "b", two), "b");
+  assert.equal(storeForNewSheet(label, undefined, one), undefined);
 });
