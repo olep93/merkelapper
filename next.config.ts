@@ -6,6 +6,17 @@ const config: NextConfig = {
   outputFileTracingIncludes: {
     "/api/sheets/**/pdf": ["./public/zxing_reader.wasm"],
   },
+  // Addresses outside /merkelapp on the old host (merkelapp.vercel.app/) go to the portal. The portal always asks
+  // under /merkelapp, so its own requests never match; pages under /merkelapp move on in the browser (layout.tsx).
+  async redirects() {
+    return [{
+      source: "/:path((?!merkelapp(?:[/.]|$)|_next/).*)",
+      basePath: false,
+      has: [{ type: "host", value: "merkelapp(-ole93|-git-main-ole93)?\\.vercel\\.app" }],
+      destination: "https://jobbverktoy.no/merkelapp/:path",
+      permanent: false,
+    }];
+  },
   async headers() {
     return [
       {
