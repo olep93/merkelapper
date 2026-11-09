@@ -8,13 +8,21 @@ export function DoorSheetPreview({ children }: { children: ReactNode }) {
   useEffect(() => {
     const measure = () => {
       const width = container.current?.clientWidth || 320;
-      const height = Math.max(300, window.innerHeight - 290);
+      const top = container.current?.getBoundingClientRect().top || 0;
+      const height =
+        window.innerWidth > 760
+          ? Math.max(220, window.innerHeight - Math.max(0, top) - 90)
+          : Math.max(280, window.innerHeight - 220);
       setScale(
         Math.min(width / ((210 * 96) / 25.4), height / ((297 * 96) / 25.4), 1),
       );
     };
     const observer = new ResizeObserver(measure);
-    if (container.current) observer.observe(container.current);
+    if (container.current) {
+      observer.observe(container.current);
+      const workspace = container.current.closest(".door-workspace");
+      if (workspace) observer.observe(workspace);
+    }
     window.addEventListener("resize", measure);
     measure();
     return () => {

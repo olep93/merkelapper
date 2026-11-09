@@ -56,13 +56,14 @@ const bookSchema = z
 export function DoorMarking({ accountId }: { accountId: string }) {
   const [pages, setPages] = useState<DoorPage[]>([[null, null]]);
   const [pageIndex, setPageIndex] = useState(0);
-  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [storageError, setStorageError] = useState("");
   const [scanner, setScanner] = useState(false);
   const [editing, setEditing] = useState<[number, number] | null>(null);
   const [editor, setEditor] = useState(false);
+  const [slotPicker, setSlotPicker] = useState<[number, number] | null>(null);
+  const [pickerCode, setPickerCode] = useState("");
   const [product, setProduct] = useState<Product | null>(null);
   const [name, setName] = useState("");
   const [details, setDetails] = useState<DoorDetails>(doorDetails(""));
@@ -74,7 +75,6 @@ export function DoorMarking({ accountId }: { accountId: string }) {
     Partial<Record<string, "ready" | "missing">>
   >({});
   const [removed, setRemoved] = useState<DoorPage[] | null>(null);
-  const eanInput = useRef<HTMLInputElement>(null);
   const printRoot = useRef<HTMLDivElement>(null);
   const draftRoot = useRef<HTMLDivElement>(null);
   const generation = useRef(0);
@@ -85,10 +85,7 @@ export function DoorMarking({ accountId }: { accountId: string }) {
       if (stored) {
         const restored = bookSchema.safeParse(JSON.parse(stored));
         if (restored.success) {
-          const filled = restored.data.filter((p) =>
-            p.some(Boolean),
-          ) as DoorPage[];
-          setPages(filled.length ? filled : [[null, null]]);
+          setPages(restored.data as DoorPage[]);
         } else
           setStorageError(
             "Tidligere ark kunne ikke leses. Legg til dørene på nytt.",
@@ -116,6 +113,7 @@ export function DoorMarking({ accountId }: { accountId: string }) {
     .map((p) => p.trim())
     .filter(Boolean);
   const target = editing || nextDoorSlot(pages);
+  const replacing = !!editing && !!pages[editing[0]]?.[editing[1]];
   const draft = product
     ? { ean: product.ean, name, details, points, product }
     : null;
@@ -127,10 +125,12 @@ export function DoorMarking({ accountId }: { accountId: string }) {
     !!target &&
     imageStates[product!.imageUrl!] === "ready";
   const savedLabels = pages.flat().filter((d): d is DoorLabelData => !!d);
-  const pageCount = Math.max(1, pages.filter((p) => p.some(Boolean)).length);
+  const pageCount = pages.length;
+  const printPageCount = pages.filter((p) => p.some(Boolean)).length;
   const canPrint =
     !!savedLabels.length &&
     !editor &&
+    !slotPicker &&
     !busy &&
     printFits &&
     savedLabels.every((d) => imageStates[d.product.imageUrl!] === "ready");
@@ -168,19 +168,47 @@ export function DoorMarking({ accountId }: { accountId: string }) {
     setEditor(false);
     setProduct(null);
     setEditing(null);
-    setTimeout(() => eanInput.current?.focus(), 0);
   }
-  function openEditor(data: DoorLabelData, position: [number, number] | null) {
+  function openEditor(
+    data: DoorLabelData,
+    position: [number, number] | null,
+    checked = !!position,
+  ) {
     setProduct(data.product);
     setName(data.name);
     setDetails({ ...data.details });
     setArgumentsText(data.points.join("\n"));
-    setConfirmed(!!position);
+    setConfirmed(checked);
     setEditing(position);
     setEditor(true);
   }
-  async function lookup(ean = code) {
-    if (!nextDoorSlot(pages)) {
+  function chooseHalf(slot: number) {
+    if (busy) return;
+    const data = selectedPage[slot];
+    if (data) openEditor(data, [pageIndex, slot]);
+    else {
+      setPickerCode("");
+      setMessage("");
+      setSlotPicker([pageIndex, slot]);
+    }
+  }
+  function closePicker() {
+    generation.current++;
+    setBusy(false);
+    setSlotPicker(null);
+    setMessage("");
+  }
+  function changeDoor() {
+    if (!editing) return;
+    setSlotPicker(editing);
+    setPickerCode("");
+    setMessage("");
+    setEditor(false);
+    setProduct(null);
+    setEditing(null);
+  }
+  async function lookup(ean: string, position: [number, number] | null = null) {
+    if (!position && !nextDoorSlot(pages)) {
       setMessage(
         "Du har nå 30 fulle ark. Fjern en dør før du legger til flere.",
       );
@@ -216,8 +244,10 @@ export function DoorMarking({ accountId }: { accountId: string }) {
           points: p.sellingPoints || [],
           product: p,
         },
-        null,
+        position,
+        false,
       );
+      setSlotPicker(null);
     } catch (error) {
       if (id === generation.current)
         setMessage(
@@ -237,9 +267,8 @@ export function DoorMarking({ accountId }: { accountId: string }) {
     storePages(next);
     setPageIndex(target[0]);
     setRemoved(null);
-    setCode("");
     setMessage(
-      editing
+      replacing
         ? "Dørmerket er oppdatert."
         : next[target[0]].every(Boolean)
           ? `Ark ${target[0] + 1} er fullt. Skann neste dør for å fortsette.`
@@ -285,7 +314,7 @@ export function DoorMarking({ accountId }: { accountId: string }) {
       <header className="door-heading">
         <div>
           <h1>Dørmerking</h1>
-          <p>To dører på hvert A4-ark. Neste ark opprettes automatisk.</p>
+          <p>Trykk på den halvdelen av arket du vil fylle eller endre.</p>
         </div>
         <button
           className="button primary"
@@ -294,133 +323,40 @@ export function DoorMarking({ accountId }: { accountId: string }) {
         >
           <Printer size={18} />
           Skriv ut
-          {savedLabels.length ? ` · ${pageCount} ark` : ""}
+          {savedLabels.length ? ` · ${printPageCount} ark` : ""}
         </button>
       </header>
-      <aside className="door-sidebar">
-        <section className="door-controls door-add">
-          <h2>Legg til dør</h2>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void lookup();
-            }}
-          >
-            <label>
-              EAN / strekkode
-              <input
-                ref={eanInput}
-                aria-label="EAN / strekkode"
-                inputMode="numeric"
-                maxLength={13}
-                value={code}
-                placeholder="Skann eller skriv EAN"
-                onChange={(e) => {
-                  generation.current++;
-                  setBusy(false);
-                  setCode(e.target.value.trim());
-                  setMessage("");
-                }}
-              />
-            </label>
-            <div className="door-actions">
-              <button className="button primary" disabled={busy || !code}>
-                <Search size={18} />
-                {busy ? "Henter …" : "Hent dør"}
-              </button>
-              <button
-                type="button"
-                className="button secondary"
-                disabled={busy}
-                onClick={() => setScanner(true)}
-              >
-                <ScanLine size={18} />
-                Kamera
-              </button>
-            </div>
-          </form>
-          <small>
-            {nextDoorSlot(pages)
-              ? `Neste dør → ark ${nextDoorSlot(pages)![0] + 1}, ${nextDoorSlot(pages)![1] === 0 ? "venstre" : "høyre"} halvdel`
-              : "Alle 30 ark er fulle."}
-          </small>
-          {!savedLabels.length && (
-            <button
-              className="door-example"
-              disabled={busy}
-              onClick={() => lookup("7072354000770")}
-            >
-              Prøv med en eksempeldør
-            </button>
-          )}
-        </section>
-        <section
-          className="door-card-list"
-          aria-label={`Dører på ark ${pageIndex + 1}`}
+      <section className="door-canvas-actions" aria-label="Arkverktøy">
+        <button
+          className="button secondary"
+          disabled={busy || pages.length >= 30}
+          onClick={() => {
+            if (!pages[pages.length - 1].some(Boolean)) {
+              setPageIndex(pages.length - 1);
+              return;
+            }
+            storePages([...pages, [null, null]]);
+            setPageIndex(pages.length);
+            setMessage("");
+          }}
         >
-          <h2>På ark {pageIndex + 1}</h2>
-          {selectedPage.map((data, slot) =>
-            data ? (
-              <article className="door-item" key={slot}>
-                <span className="door-slot-caption">
-                  {slot === 0 ? "VENSTRE" : "HØYRE"} HALVDEL
-                </span>
-                <div className="door-item-info">
-                  <img
-                    src={data.product.imageUrl}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                  />
-                  <div>
-                    <strong>{data.name}</strong>
-                    <span>
-                      {data.details.width} × {data.details.height} cm ·{" "}
-                      {data.details.handing}
-                    </span>
-                  </div>
-                </div>
-                <div className="door-item-actions">
-                  <button
-                    className="button secondary"
-                    onClick={() => openEditor(data, [pageIndex, slot])}
-                  >
-                    <Pencil size={15} />
-                    Rediger
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label={`Kopier dør ${slot + 1}`}
-                    title="Kopier dør"
-                    disabled={!nextDoorSlot(pages)}
-                    onClick={() => duplicate(data)}
-                  >
-                    <Copy size={17} />
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label={`Fjern dør ${slot + 1}`}
-                    title="Fjern dør"
-                    onClick={() => removeDoor(slot)}
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              </article>
-            ) : (
-              <button
-                key={slot}
-                className="door-empty-card"
-                onClick={() => eanInput.current?.focus()}
-              >
-                <Plus size={20} />
-                <span>
-                  {slot === 0 ? "Første dør" : "Plass til én dør til"}
-                  <small>Skann eller skriv EAN ovenfor</small>
-                </span>
-              </button>
-            ),
-          )}
-        </section>
+          <Plus size={18} />
+          Nytt ark
+        </button>
+        <button
+          className="button secondary"
+          disabled={busy}
+          onClick={() => setScanner(true)}
+        >
+          <ScanLine size={18} />
+          Skann neste dør
+        </button>
+        <small>
+          <Check size={14} />
+          Lagres automatisk
+        </small>
+      </section>
+      <section className="door-canvas-messages">
         {message && (
           <p className="door-notice" role="status">
             {message}
@@ -457,11 +393,7 @@ export function DoorMarking({ accountId }: { accountId: string }) {
             Et produktbilde kunne ikke lastes. Last siden på nytt før utskrift.
           </p>
         )}
-        <small className="door-storage-note">
-          <Check size={14} />
-          Arkene lagres automatisk i denne nettleseren.
-        </small>
-      </aside>
+      </section>
       <section className="door-preview" aria-label="Forhåndsvisning av A4">
         <div className="door-preview-toolbar">
           <div>
@@ -490,17 +422,73 @@ export function DoorMarking({ accountId }: { accountId: string }) {
           </div>
         </div>
         <DoorSheetPreview>
-          {selectedPage.map((data, slot) =>
-            data ? (
-              <DoorLabel key={slot} {...data} onImage={onImage} />
-            ) : (
-              <div className="door-empty-slot" key={slot}>
-                <Plus size={44} />
-                <strong>{slot === 0 ? "Din første dør" : "Neste dør"}</strong>
-                <span>Skann en dør for å fylle denne halvdelen</span>
-              </div>
-            ),
-          )}
+          {selectedPage.map((data, slot) => (
+            <div className="door-clickable-half" key={slot}>
+              {data ? (
+                <DoorLabel {...data} onImage={onImage} />
+              ) : (
+                <div className="door-empty-slot">
+                  <svg
+                    className="door-example-drawing"
+                    viewBox="0 0 120 230"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="12"
+                      y="8"
+                      width="96"
+                      height="214"
+                      rx="2"
+                      fill="#eef3fb"
+                      stroke="#b9cbe3"
+                      strokeWidth="3"
+                    />
+                    <rect
+                      x="22"
+                      y="20"
+                      width="76"
+                      height="86"
+                      rx="2"
+                      fill="white"
+                      stroke="#cbd8e9"
+                      strokeWidth="2"
+                    />
+                    <rect
+                      x="22"
+                      y="120"
+                      width="76"
+                      height="88"
+                      rx="2"
+                      fill="white"
+                      stroke="#cbd8e9"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M28 113h15"
+                      stroke="#9cb3d2"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <strong>
+                    {slot === 0 ? "Venstre halvdel" : "Høyre halvdel"}
+                  </strong>
+                  <span>Trykk her for å legge til en dør</span>
+                </div>
+              )}
+              <button
+                className="door-half-button"
+                disabled={busy}
+                aria-label={`${data ? "Endre" : "Legg til dør på"} ${slot === 0 ? "venstre" : "høyre"} halvdel på ark ${pageIndex + 1}`}
+                onClick={() => chooseHalf(slot)}
+              >
+                <span>
+                  {data ? <Pencil size={24} /> : <Plus size={24} />}
+                  {data ? "Trykk for å endre" : "Legg til dør"}
+                </span>
+              </button>
+            </div>
+          ))}
         </DoorSheetPreview>
         {pages.length > 1 && (
           <nav className="door-page-tabs" aria-label="Velg ark">
@@ -517,8 +505,8 @@ export function DoorMarking({ accountId }: { accountId: string }) {
           </nav>
         )}
         <p className="door-preview-hint">
-          Hele arket vises tilpasset skjermen. Utskrift beholder riktig
-          størrelse.
+          Trykk på venstre eller høyre halvdel for å legge til, bytte eller
+          redigere en dør.
         </p>
       </section>
       <div className="door-print-root" ref={printRoot} aria-hidden="true">
@@ -536,16 +524,93 @@ export function DoorMarking({ accountId }: { accountId: string }) {
             </div>
           ))}
       </div>
+      {slotPicker && (
+        <Dialog labelledBy="door-picker-title" onClose={closePicker}>
+          <section className="door-editor door-controls">
+            <div className="door-editor-heading">
+              <div>
+                <span className="eyebrow">
+                  ARK {slotPicker[0] + 1} ·{" "}
+                  {slotPicker[1] === 0 ? "VENSTRE" : "HØYRE"} HALVDEL
+                </span>
+                <h2 id="door-picker-title">
+                  {pages[slotPicker[0]][slotPicker[1]]
+                    ? "Bytt dør på denne halvdelen"
+                    : "Legg til dør her"}
+                </h2>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Lukk valg av dør"
+                onClick={closePicker}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void lookup(pickerCode, slotPicker);
+              }}
+            >
+              <label>
+                EAN for denne halvdelen
+                <input
+                  autoFocus
+                  aria-label="EAN for denne halvdelen"
+                  inputMode="numeric"
+                  maxLength={13}
+                  value={pickerCode}
+                  placeholder="Skann eller skriv EAN"
+                  onChange={(e) => {
+                    generation.current++;
+                    setBusy(false);
+                    setPickerCode(e.target.value.trim());
+                    setMessage("");
+                  }}
+                />
+              </label>
+              <div className="door-actions">
+                <button
+                  className="button primary"
+                  disabled={busy || !pickerCode}
+                >
+                  <Search size={18} />
+                  {busy ? "Henter …" : "Hent dør"}
+                </button>
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => setScanner(true)}
+                >
+                  <ScanLine size={18} />
+                  Kamera
+                </button>
+              </div>
+            </form>
+            {pages[slotPicker[0]][slotPicker[1]] && (
+              <small>
+                Den eksisterende døren beholdes til du lagrer den nye.
+              </small>
+            )}
+            {message && <p role="status">{message}</p>}
+            <button className="button secondary" onClick={closePicker}>
+              Avbryt
+            </button>
+          </section>
+        </Dialog>
+      )}
       {editor && product && (
         <Dialog labelledBy="door-editor-title" onClose={closeEditor}>
           <section className="door-editor door-controls">
             <div className="door-editor-heading">
               <div>
                 <span className="eyebrow">
-                  {editing ? "REDIGER DØR" : "KONTROLLER DØREN"}
+                  {replacing ? "REDIGER DØR" : "KONTROLLER DØREN"}
                 </span>
                 <h2 id="door-editor-title">
-                  {editing ? "Endre dørmerket" : "Klar til å legge på arket?"}
+                  {replacing ? "Endre dørmerket" : "Klar til å legge på arket?"}
                 </h2>
               </div>
               <button
@@ -575,6 +640,43 @@ export function DoorMarking({ accountId }: { accountId: string }) {
                 </a>
               </div>
             </div>
+            {editing && (
+              <button
+                className="button secondary door-change-product"
+                onClick={changeDoor}
+              >
+                <ScanLine size={18} />
+                Bytt til en annen dør
+              </button>
+            )}
+            {replacing && editing && (
+              <div className="door-editor-item-actions">
+                <button
+                  className="button secondary"
+                  disabled={!nextDoorSlot(pages)}
+                  onClick={() => {
+                    const saved = pages[editing[0]][editing[1]];
+                    if (saved) {
+                      duplicate(saved);
+                      closeEditor();
+                    }
+                  }}
+                >
+                  <Copy size={16} />
+                  Kopier til ledig plass
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    removeDoor(editing[1]);
+                    closeEditor();
+                  }}
+                >
+                  <Trash2 size={16} />
+                  Fjern fra arket
+                </button>
+              </div>
+            )}
             <div className="door-editor-specs">
               <label>
                 Bredde (cm)
@@ -680,7 +782,7 @@ export function DoorMarking({ accountId }: { accountId: string }) {
                 onClick={placeDoor}
               >
                 <Check size={18} />
-                {editing ? "Lagre endringer" : "Legg på arket"}
+                {replacing ? "Lagre endringer" : "Legg på arket"}
               </button>
             </div>
           </section>
@@ -695,13 +797,21 @@ export function DoorMarking({ accountId }: { accountId: string }) {
         <Scanner
           onRead={(ean) => {
             setScanner(false);
-            setCode(ean);
-            void lookup(ean);
+            void lookup(ean, slotPicker);
           }}
           onClose={() => setScanner(false)}
           onManual={() => {
             setScanner(false);
-            eanInput.current?.focus();
+            if (!slotPicker) {
+              const slot = nextDoorSlot(pages);
+              if (slot) {
+                if (slot[0] === pages.length)
+                  storePages([...pages, [null, null]]);
+                setPageIndex(slot[0]);
+                setPickerCode("");
+                setSlotPicker(slot);
+              }
+            }
           }}
         />
       )}

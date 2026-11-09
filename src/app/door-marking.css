@@ -606,3 +606,117 @@
 .door-editor {
   width: 100%;
 }
+.door-clickable-half {
+  position: relative;
+  width: 105mm;
+  height: 297mm;
+  flex-shrink: 0;
+}
+.door-half-button {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 4px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.door-half-button > span {
+  position: absolute;
+  bottom: 9mm;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  border-radius: 30px;
+  padding: 11px 18px;
+  background: #eaf1ff;
+  border: 1px solid #c4d7fa;
+  color: #2458b3;
+  font:
+    600 23px Arial,
+    sans-serif;
+}
+.door-half-button:hover:enabled,
+.door-half-button:focus-visible {
+  border-color: #3873e2;
+  background: #2458b30a;
+  outline: none;
+}
+.door-half-button:hover:enabled > span,
+.door-half-button:focus-visible > span {
+  color: white;
+  background: #2458b3;
+  border-color: #2458b3;
+}
+.door-half-button:disabled {
+  cursor: wait;
+}
+/* The A4 preview is the primary menu; no separate list of doors. */
+.door-workspace {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 1100px;
+  gap: 14px;
+}
+.door-canvas-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.door-canvas-actions > small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: #68788b;
+  font-size: 12px;
+}
+.door-canvas-messages {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.door-canvas-messages:empty {
+  display: none;
+}
+.door-preview {
+  position: static;
+}
+.door-example-drawing {
+  width: 42mm;
+  height: 82mm;
+  margin-bottom: 8mm;
+}
+.door-editor-item-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.door-editor-item-actions > button {
+  flex: 1;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .door-canvas-actions {
+    width: 100%;
+    order: 1;
+  }
+  .door-canvas-actions > button {
+    flex: 1;
+    font-size: 12px;
+  }
+  .door-canvas-actions > small {
+    width: 100%;
+    justify-content: center;
+  }
+  .door-canvas-messages {
+    order: 3;
+  }
+}
