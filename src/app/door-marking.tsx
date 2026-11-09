@@ -1,18 +1,45 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Printer, ScanLine, Search } from "lucide-react";
+import { Printer, ScanLine, Search, Plus, Save } from "lucide-react";
 import { Scanner } from "./scanner";
-import { eanBits } from "@/lib/barcode";
+import { DoorLabel } from "./door-label";
+import { z } from "zod";
+import { productSchema } from "@/lib/model";
 import { validEan } from "@/lib/model";
 import {
   doorDetails,
   readyToPrint,
   type DoorDetails,
+  type DoorLabelData,
+  type DoorPage,
 } from "@/lib/door-marking";
 import type { Product } from "@/lib/products";
 import "./door-marking.css";
 
-export function DoorMarking() {
+const savedLabelSchema = z
+  .object({
+    ean: z.string(),
+    name: z.string(),
+    details: z.object({
+      width: z.string(),
+      height: z.string(),
+      handing: z.enum(["", "H", "V", "Vendbar"]),
+    }),
+    points: z.array(z.string()),
+    product: productSchema,
+  })
+  .refine(
+    (d) =>
+      d.product.selectedVariantVerified &&
+      d.product.ean === d.ean &&
+      !!d.product.imageUrl &&
+      readyToPrint(d.ean, d.name, d.details, d.points),
+  );
+const bookSchema = z
+  .array(z.tuple([savedLabelSchema.nullable(), savedLabelSchema.nullable()]))
+  .min(1)
+  .max(30);
+export function DoorMarking({ accountId }: { accountId: string }) {
   const [ean, setEan] = useState("");
   const [product, setProduct] = useState<Product | null>(null);
   const [name, setName] = useState("");
@@ -21,11 +48,42 @@ export function DoorMarking() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [scanner, setScanner] = useState(false);
-  const [copies, setCopies] = useState(2);
+  const [pages, setPages] = useState<DoorPage[]>([[null, null]]);
+  const [active, setActive] = useState<[number, number]>([0, 0]);
+  const [storageError, setStorageError] = useState("");
+  const storageKey = `merkelapp-doors-v1-${accountId}`;
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const restored = bookSchema.safeParse(JSON.parse(stored));
+        if (restored.success) {
+          setPages(restored.data as DoorPage[]);
+          setActive([0, 0]);
+          loadDraft(restored.data[0][0] as DoorLabelData | null);
+        } else
+          setStorageError(
+            "Tidligere dørark kunne ikke leses. Lag nye merker med et kontrollert produktoppslag.",
+          );
+      }
+    } catch {
+      setStorageError(
+        "Lokal lagring er utilgjengelig. Behold fanen åpen til du har skrevet ut.",
+      );
+    }
+  }, [storageKey]);
   const [confirmed, setConfirmed] = useState(false);
-  const [imageState, setImageState] = useState<"loading" | "ready" | "missing">(
-    "missing",
-  );
+  const [imageStates, setImageStates] = useState<
+    Partial<Record<string, "ready" | "missing">>
+  >({});
+  const imageState = product?.imageUrl
+    ? imageStates[product.imageUrl] || "loading"
+    : "missing";
+  function onImage(url: string, state: "ready" | "missing") {
+    setImageStates((previous) =>
+      previous[url] === state ? previous : { ...previous, [url]: state },
+    );
+  }
   const [layoutFits, setLayoutFits] = useState(true);
   const sheetRef = useRef<HTMLDivElement>(null);
   const generation = useRef(0);
@@ -45,9 +103,9 @@ export function DoorMarking() {
   useEffect(() => {
     const measure = () =>
       setLayoutFits(
-        Array.from(sheetRef.current?.children || []).every(
-          (label) => label.scrollHeight <= label.clientHeight + 1,
-        ),
+        Array.from(
+          sheetRef.current?.querySelectorAll(".door-label") || [],
+        ).every((label) => label.scrollHeight <= label.clientHeight + 1),
       );
     const observer = new ResizeObserver(measure);
     if (sheetRef.current) {
@@ -58,14 +116,85 @@ export function DoorMarking() {
     }
     measure();
     return () => observer.disconnect();
-  }, [name, argumentsText, details, copies, imageState]);
+  }, [name, argumentsText, details, pages, active, imageStates]);
+  const currentDraft = { ean, name, details, points, product };
+  const saved = pages[active[0]]?.[active[1]] || null;
+  const dirty = saved
+    ? JSON.stringify(currentDraft) !== JSON.stringify(saved)
+    : !!(ean || name || product);
+  const savedLabels = pages.flat().filter((d): d is DoorLabelData => !!d);
+  const canPrint =
+    savedLabels.length > 0 &&
+    !dirty &&
+    !busy &&
+    layoutFits &&
+    savedLabels.every((d) => imageStates[d.product.imageUrl!] === "ready");
+  function loadDraft(data: DoorLabelData | null) {
+    generation.current++;
+    setBusy(false);
+    setMessage("");
+    setEan(data?.ean || "");
+    setName(data?.name || "");
+    setProduct(data?.product || null);
+    setDetails(data?.details || doorDetails(""));
+    setArgumentsText(data?.points.join("\n") || "");
+    setConfirmed(!!data);
+  }
+  function storePages(next: DoorPage[]) {
+    setPages(next);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      setStorageError("");
+    } catch {
+      setStorageError(
+        "Kunne ikke lagre på denne enheten. Merkene finnes bare i den åpne fanen; skriv ut før du lukker.",
+      );
+    }
+  }
+  function saveLabel() {
+    if (!ready || !product) return;
+    const next = pages.map((page) => [...page] as DoorPage);
+    next[active[0]][active[1]] = {
+      ean,
+      name,
+      details: { ...details },
+      points: [...points],
+      product,
+    };
+    storePages(next);
+    setMessage(
+      `Dørmerket er lagt på side ${active[0] + 1}, plass ${active[1] + 1}.`,
+    );
+  }
+  function selectSlot(page: number, slot: number) {
+    if (dirty || busy) return;
+    setActive([page, slot]);
+    loadDraft(pages[page][slot]);
+  }
+  function addPage() {
+    if (dirty || busy || !pages[active[0]].some(Boolean) || pages.length >= 30)
+      return;
+    storePages([...pages, [null, null]]);
+    setActive([pages.length, 0]);
+    loadDraft(null);
+  }
+  function printPages() {
+    if (!canPrint) return;
+    const images = Array.from(
+      sheetRef.current?.querySelectorAll(".door-sheet img") || [],
+    ) as HTMLImageElement[];
+    if (images.some((img) => !img.complete || !img.naturalWidth)) {
+      setMessage("Vent til alle produktbildene er lastet før utskrift.");
+      return;
+    }
+    window.print();
+  }
   function clearProduct() {
     setProduct(null);
     setName("");
     setDetails(doorDetails(""));
     setArgumentsText("");
     setConfirmed(false);
-    setImageState("missing");
   }
   async function lookup(code = ean) {
     const id = ++generation.current;
@@ -94,7 +223,7 @@ export function DoorMarking() {
           result.message ||
             (result.status === "ambiguous"
               ? "Flere treff på EAN. Ingen variant er valgt. Kontroller koden og prøv igjen."
-              : "Fant ikke et sikkert treff hos Obs BYGG. Kontroller EAN og prøv igjen."),
+              : "Kunne ikke bekrefte at valgt artikkel og størrelse hos Obs BYGG samsvarer med EAN. Kontroller koden og prøv igjen."),
         );
         return;
       }
@@ -103,7 +232,7 @@ export function DoorMarking() {
       setName(p.name);
       setDetails(doorDetails(p.size || ""));
       setArgumentsText((p.sellingPoints || []).join("\n"));
-      setImageState(p.imageUrl ? "loading" : "missing");
+
       setMessage(
         "Kontroller mål og slagretning mot varen. Produktbildet kan være felles for flere varianter.",
       );
@@ -122,92 +251,17 @@ export function DoorMarking() {
     setDetails((d) => ({ ...d, [key]: value }));
     setConfirmed(false);
   }
-  const label = (copy: number) => (
-    <article
-      className="door-label"
-      key={copy}
-      aria-label={`Dørmerke ${copy + 1}`}
-    >
-      <div className="door-label-kicker">DØRMERKING</div>
-      <h2>{name || "Produktnavn"}</h2>
-      <div className="door-image">
-        {product?.imageUrl ? (
-          <img
-            key={product.imageUrl}
-            src={product.imageUrl}
-            alt={name}
-            referrerPolicy="no-referrer"
-            onLoad={() => setImageState("ready")}
-            onError={() => setImageState("missing")}
-          />
-        ) : (
-          <span>Skann en dør for å hente bilde</span>
-        )}
-      </div>
-      <small className="door-image-note">
-        Illustrasjonsbilde – se slagretning nedenfor
-      </small>
-      <div className="door-specs">
-        <div>
-          <small>SLAGRETNING</small>
-          <strong>
-            {details.handing === "H"
-              ? "H · Høyre"
-              : details.handing === "V"
-                ? "V · Venstre"
-                : details.handing || "Må fylles inn"}
-          </strong>
-        </div>
-        <div>
-          <small>BREDDE × HØYDE</small>
-          <strong>
-            {details.width || "–"} × {details.height || "–"} cm
-          </strong>
-          <small>Oppgitt størrelse / modulmål</small>
-        </div>
-      </div>
-      <ul className="door-arguments">
-        {points.map((p, i) => (
-          <li key={i}>{p}</li>
-        ))}
-      </ul>
-      <div className="door-barcode">
-        {validEan(ean) && (
-          <svg
-            role="img"
-            aria-label={`Strekkode ${ean}`}
-            viewBox={`0 0 ${eanBits(ean).length + 22} 80`}
-            width={`${(eanBits(ean).length + 22) * 0.33}mm`}
-            height="26.4mm"
-          >
-            <rect width="100%" height="100%" fill="white" />
-            {[...eanBits(ean)].map((b, i) =>
-              b === "1" ? (
-                <rect
-                  key={i}
-                  x={i + 11}
-                  y={0}
-                  width={1}
-                  height={70}
-                  fill="black"
-                />
-              ) : null,
-            )}
-          </svg>
-        )}
-        <strong>{ean || "EAN"}</strong>
-      </div>
-      <footer>Produktinformasjon fra Obs BYGG</footer>
-    </article>
-  );
   return (
     <main className="door-workspace">
       <section className="door-controls">
-        <span className="eyebrow">NYTT DØRMERKE</span>
+        <span className="eyebrow">
+          SIDE {active[0] + 1} · PLASS {active[1] + 1} AV 2
+        </span>
         <h1>Dørmerking</h1>
         <p>
-          Skann varen, kontroller opplysningene og skriv ut. Hvert merke er 105
-          × 297 mm – et stående A4-ark delt på langs.
+          Skann varen, kontroller og lagre dørmerket. Legg til en ny dør på den
+          andre halvdelen, eller opprett en ny side. Hvert merke er 105 × 297 mm
+          – et stående A4-ark delt på langs.
         </p>
         <form
           onSubmit={(e) => {
@@ -262,7 +316,7 @@ export function DoorMarking() {
               Kontroller produktet hos Obs BYGG ↗
             </a>
             <p className="door-source">
-              Variant fra nettsiden:{" "}
+              Valgt størrelse:{" "}
               <strong>{product.size || "Størrelse ikke oppgitt"}</strong>
             </p>
             <label>
@@ -340,16 +394,49 @@ export function DoorMarking() {
             </label>
           </>
         )}
-        <label>
-          Merker på A4-arket
-          <select
-            value={copies}
-            onChange={(e) => setCopies(Number(e.target.value))}
+        <div className="door-book-actions">
+          <button
+            className="button primary"
+            disabled={!ready || !dirty}
+            onClick={saveLabel}
           >
-            <option value={1}>1 merke</option>
-            <option value={2}>2 like merker</option>
-          </select>
-        </label>
+            <Save size={18} />
+            {saved ? "Lagre endringer" : "Lagre dørmerke"}
+          </button>
+          <button
+            className="button secondary"
+            disabled={dirty || busy || pages[active[0]].every(Boolean)}
+            onClick={() => selectSlot(active[0], pages[active[0]][0] ? 1 : 0)}
+          >
+            <Plus size={18} />
+            Legg til ny
+          </button>
+          <button
+            className="button secondary"
+            disabled={
+              dirty ||
+              busy ||
+              !pages[active[0]].some(Boolean) ||
+              pages.length >= 30
+            }
+            onClick={addPage}
+          >
+            <Plus size={18} />
+            Ny side
+          </button>
+          {dirty && (
+            <button
+              className="button secondary"
+              onClick={() => loadDraft(saved)}
+            >
+              Forkast ulagrede endringer
+            </button>
+          )}
+          {dirty && (
+            <small>Lagre merket før du bytter plass eller skriver ut.</small>
+          )}
+        </div>
+        {storageError && <p role="alert">{storageError}</p>}
         {product && !fieldsValid && (
           <p role="status">
             Fyll inn navn (maks. 160 tegn), gyldige mål, slagretning og 1–5
@@ -364,22 +451,83 @@ export function DoorMarking() {
         )}
         <button
           className="button primary"
-          disabled={!ready}
-          onClick={() => window.print()}
+          disabled={!canPrint}
+          onClick={printPages}
         >
           <Printer size={18} />
-          Skriv ut / lagre PDF
+          Skriv ut alle ark / lagre PDF
         </button>
         <small>
           Velg A4, stående, 100 % skala, ingen marger og slå av topp-/bunntekst.
-          Utkastet beholdes bare mens denne fanen er åpen.
+          Lagrede merker beholdes i denne nettleseren for din bruker. Ulagrede
+          endringer forsvinner når du forlater fanen.
         </small>
       </section>
-      <section className="door-preview" aria-label="Forhåndsvisning">
-        <p>Forhåndsvisning · A4 · klipp langs midten</p>
-        <div className="door-sheet" ref={sheetRef}>
-          {Array.from({ length: copies }, (_, i) => label(i))}
-        </div>
+      <section
+        className="door-preview"
+        aria-label="Forhåndsvisning"
+        ref={sheetRef}
+      >
+        <p>
+          Forhåndsvisning · {pages.length} A4-ark · to dører per side · klipp
+          langs midten
+        </p>
+        {pages.map((page, pi) => (
+          <div
+            className={`door-page ${page.some(Boolean) ? "has-saved-labels" : "empty-page"}`}
+            key={pi}
+          >
+            <div className="door-page-toolbar">
+              <strong>Side {pi + 1}</strong>
+              {[0, 1].map((slot) => (
+                <button
+                  key={slot}
+                  className={`button ${active[0] === pi && active[1] === slot ? "selected" : "secondary"}`}
+                  disabled={dirty || busy}
+                  onClick={() => selectSlot(pi, slot)}
+                >
+                  {page[slot]
+                    ? `Rediger dør ${slot + 1}`
+                    : `+ Legg til dør ${slot + 1}`}
+                </button>
+              ))}
+              <button
+                className="button secondary"
+                disabled={dirty || busy}
+                onClick={() => {
+                  const next = pages.filter((_, i) => i !== pi);
+                  if (!next.length) next.push([null, null]);
+                  storePages(next);
+                  setActive([0, 0]);
+                  loadDraft(next[0][0]);
+                }}
+              >
+                Fjern side
+              </button>
+            </div>
+            <div className="door-sheet">
+              {[0, 1].map((slot) => {
+                const isActive = active[0] === pi && active[1] === slot;
+                const data = isActive ? currentDraft : page[slot];
+                return data && (data.product || data.ean) ? (
+                  <DoorLabel key={slot} {...data} onImage={onImage} />
+                ) : (
+                  <div className="door-empty-slot" key={slot}>
+                    <span>Ledig plass {slot + 1}</span>
+                    <button
+                      className="button secondary"
+                      disabled={dirty || busy}
+                      onClick={() => selectSlot(pi, slot)}
+                    >
+                      <Plus size={18} />
+                      Legg til ny dør
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </section>
       {scanner && (
         <Scanner

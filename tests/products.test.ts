@@ -1,3 +1,4 @@
+import { selectedPage } from "./obs-selected-fixture";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -13,7 +14,8 @@ const ean = "7025180735989",
 const page = "https://www.obsbygg.no/verktoy/1234567";
 const image = "/globalassets/productimages/example.jpg?ref=abc";
 const html = (value: unknown) =>
-  `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
+  `<script type="application/ld+json">${JSON.stringify(value)}</script>` +
+  selectedPage(ean);
 const group = (variants: unknown[]) => ({
   "@type": "ProductGroup",
   name: "Kellen skruesett",
@@ -67,7 +69,12 @@ test("no image, malformed data and duplicate structured scripts are safe", () =>
     0,
   );
   assert.equal(
-    productsFromHtml(html(variant()) + html(variant()), ean, page).length,
+    productsFromHtml(
+      html(variant()) +
+        `<script type="application/ld+json">${JSON.stringify(variant())}</script>`,
+      ean,
+      page,
+    ).length,
     1,
   );
 });
@@ -119,6 +126,7 @@ test("search candidates are verified against the product page before acceptance"
   assert.equal(result.status, "found");
   assert.equal(calls.length, 2);
   assert.ok(calls[0].includes("track=false"));
+  assert.equal(new URL(calls[1]).searchParams.get("v"), `ObsBygg-${ean}`);
   const mismatch: ProductFetcher = async (url) =>
     url.includes("/sok/autocomplete")
       ? Response.json({
@@ -157,4 +165,107 @@ test("normalizes decomposed Norwegian characters so the fetched name prints corr
     page,
   );
   assert.equal(p.name, "Stanley målebånd");
+});
+
+test("a sibling EAN in JSON-LD never verifies the page's selected article", () => {
+  const ld = `<script type="application/ld+json">${JSON.stringify(group([variant(), variant(other)]))}</script>`;
+  assert.equal(productsFromHtml(ld, ean, page).length, 0);
+  assert.equal(productsFromHtml(ld + selectedPage(other), ean, page).length, 0);
+  const wrongArticle = selectedPage(ean).replace(
+    `<td>${ean}</td>`,
+    `<td>${other}</td>`,
+  );
+  assert.equal(productsFromHtml(ld + wrongArticle, ean, page).length, 0);
+});
+test("selected size, active article and structured variant must all agree", () => {
+  const size = "90 X 210 CM H";
+  const ld = `<script type="application/ld+json">${JSON.stringify({ ...variant(), size })}</script>`;
+  const selected = selectedPage(ean, size);
+  assert.equal(
+    productsFromHtml(ld + selected, ean, page)[0].selectedVariantVerified,
+    true,
+  );
+  assert.equal(
+    productsFromHtml(
+      ld +
+        selected.replace(`<span>${size}</span>`, "<span>90 X 210 CM V</span>"),
+      ean,
+      page,
+    ).length,
+    0,
+  );
+  assert.equal(
+    productsFromHtml(ld + selectedPage(ean, "100 X 210 CM H"), ean, page)
+      .length,
+    0,
+  );
+  assert.equal(
+    productsFromHtml(
+      ld + selected.replace("<h4>", "<div>").replace("</h4>", "</div>"),
+      ean,
+      page,
+    ).length,
+    0,
+  );
+  const stored = lineSchema.parse({
+    id: crypto.randomUUID(),
+    ean,
+    name: "Dør",
+    quantity: 1,
+    product: productsFromHtml(ld + selected, ean, page)[0],
+  });
+  assert.equal(stored.product?.size, size);
+  assert.equal(stored.product?.selectedVariantVerified, true);
+});
+test("lookup overrides a search link's default variant before loading the product", async () => {
+  const fetcher: ProductFetcher = async (url) => {
+    if (url.includes("autocomplete"))
+      return Response.json({
+        products: [{ url: page + `?v=ObsBygg-${other}` }],
+      });
+    assert.equal(new URL(url).searchParams.get("v"), `ObsBygg-${ean}`);
+    return new Response(html(variant()));
+  };
+  assert.equal((await lookupFromObs(ean, fetcher)).status, "found");
+});
+
+test("accepts the JFIF photos used by Ask doors and preserves the source validation", () => {
+  const imageUrl =
+    "https://www.obsbygg.no/globalassets/productimages/ask.jfif?ref=test";
+  assert.equal(obsUrl(imageUrl, true), imageUrl);
+  const p = productsFromHtml(
+    html({ ...variant(), image: imageUrl }),
+    ean,
+    page,
+  )[0];
+  assert.equal(
+    lineSchema.safeParse({
+      id: crypto.randomUUID(),
+      ean,
+      name: p.name,
+      quantity: 1,
+      product: p,
+    }).success,
+    true,
+  );
+  assert.equal(
+    obsUrl("https://evil.example/globalassets/productimages/ask.jfif", true),
+    undefined,
+  );
+});
+test("products without a size selector still require the landed article and active EAN", () => {
+  const selected = selectedPage(ean).replace(
+    '"sizeVariations":[]',
+    `"sizeVariations":[{"displayName":null,"code":"ObsBygg-${ean}"}]`,
+  );
+  const ld = `<script type="application/ld+json">${JSON.stringify({ ...variant(), size: undefined })}</script>`;
+  assert.equal(productsFromHtml(ld + selected, ean, page).length, 1);
+  assert.equal(
+    productsFromHtml(
+      ld + selected.replace(`<td>${ean}</td>`, `<td>${other}</td>`),
+      ean,
+      page,
+    ).length,
+    0,
+  );
 });

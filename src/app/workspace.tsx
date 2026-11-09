@@ -738,7 +738,7 @@ export function Workspace() {
       return;
     }
     const stored = bodyRef.current.lines.find((l) => l.ean === ean)?.product;
-    if (stored && lookupRetry === 0) {
+    if (stored?.selectedVariantVerified && lookupRetry === 0) {
       setProduct(stored);
       setLookupState("found");
       return;
@@ -746,6 +746,7 @@ export function Workspace() {
     let cancelled = false;
     const controller = new AbortController();
     setLookupState("loading");
+    setProduct(null);
     setProductChoices([]);
     setLookupMessage("");
     const timer = setTimeout(() => {
@@ -1357,7 +1358,7 @@ export function Workspace() {
           )}
         </main>
       ) : view === "doors" ? (
-        <DoorMarking />
+        <DoorMarking accountId={account!.id} />
       ) : (
         <main
           className={`workspace ${sheet ? "has-sheet" : "overview"} ${preview ? "is-preview" : ""}`}
@@ -2937,7 +2938,8 @@ export function Workspace() {
                     />
                     <div className="lookup-product-copy">
                       <strong>{product.name}</strong>
-                      <span>Hentet fra Obs BYGG · EAN verifisert</span>
+                      <span>Valgt artikkelnummer: {product.ean} · kontrollert mot EAN</span>
+                      {product.size && <span>Valgt størrelse: <strong>{product.size}</strong></span>}
                       <a
                         href={product.sourceUrl}
                         target="_blank"
@@ -2969,7 +2971,7 @@ export function Workspace() {
                     <Tag size={17} />
                     <span>
                       {lookupState === "not_found"
-                        ? "Fant ikke et sikkert EAN-treff hos Obs BYGG. Skriv inn varenavnet selv."
+                        ? "Kunne ikke bekrefte at valgt artikkel og størrelse hos Obs BYGG samsvarer med EAN. Kontroller varen og registrer den manuelt."
                         : lookupState === "unavailable"
                           ? lookupMessage ||
                             "Produktoppslaget er utilgjengelig. Du kan fortsette manuelt."

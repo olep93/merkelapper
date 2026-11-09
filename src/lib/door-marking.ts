@@ -50,3 +50,12 @@ export function readyToPrint(
     points.every((p) => p.length <= 180)
   );
 }
+
+export type DoorLabelData = {
+  ean: string;
+  name: string;
+  details: DoorDetails;
+  points: string[];
+  product: import("./products").Product;
+};
+export type DoorPage = [DoorLabelData | null, DoorLabelData | null];

@@ -30,7 +30,7 @@ export const productSchema = z.object({
   imageUrl: obsPage
     .refine((value) => {
       try {
-        return /^\/globalassets\/(?:productimages|bilder|produktbilder)\/[^?#]+\.(?:jpe?g|png|webp)$/i.test(
+        return /^\/globalassets\/(?:productimages|bilder|produktbilder)\/[^?#]+\.(?:jpe?g|jfif|png|webp)$/i.test(
           new URL(value).pathname,
         );
       } catch {
@@ -39,6 +39,8 @@ export const productSchema = z.object({
     }, "Ugyldig produktbilde")
     .optional(),
   fetchedAt: z.iso.datetime(),
+  size: z.string().max(100).optional(),
+  selectedVariantVerified: z.literal(true).optional(),
 });
 export const lineSchema = z
   .object({

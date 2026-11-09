@@ -19,7 +19,7 @@ export function ProductPhoto({
       u.origin === "https://www.obsbygg.no" &&
       !u.username &&
       !u.password &&
-      /^\/globalassets\/(?:productimages|bilder|produktbilder)\/[^?#]+\.(?:jpe?g|png|webp)$/i.test(
+      /^\/globalassets\/(?:productimages|bilder|produktbilder)\/[^?#]+\.(?:jpe?g|jfif|png|webp)$/i.test(
         u.pathname,
       );
   } catch {}

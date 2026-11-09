@@ -1,3 +1,4 @@
+import { selectedPage } from "./obs-selected-fixture";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { doorDetails, readyToPrint } from "../src/lib/door-marking";
@@ -78,7 +79,11 @@ test("size and arguments belong to the verified EAN, not a sibling variant", asy
                 size: "90 X 190 CM H",
               },
             ],
-          })}</script>`,
+          })}</script>` +
+            selectedPage(ean, "90 X 190 CM H", [
+              "63 mm tykkelse",
+              "5 års formgaranti",
+            ]),
         );
   const result = await lookupFromObs(ean, fake);
   assert.equal(result.status, "found");
@@ -104,5 +109,8 @@ test("size and arguments belong to the verified EAN, not a sibling variant", asy
   const other = await lookupFromObs(ean, mismatch);
   assert.equal(other.status, "found");
   if (other.status === "found")
-    assert.equal(other.product.sellingPoints, undefined);
+    assert.deepEqual(other.product.sellingPoints, [
+      "63 mm tykkelse",
+      "5 års formgaranti",
+    ]);
 });

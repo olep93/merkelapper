@@ -8,6 +8,7 @@ export type Product = {
   imageUrl?: string;
   fetchedAt: string;
   size?: string;
+  selectedVariantVerified?: true;
   sellingPoints?: string[];
 };
 export type LookupResult =
@@ -24,7 +25,7 @@ export function obsUrl(value: unknown, image = false): string | undefined {
     if (u.origin !== OBS_ORIGIN || u.username || u.password) return;
     if (
       image &&
-      !/^\/globalassets\/(?:productimages|bilder|produktbilder)\/[^?#]+\.(?:jpe?g|png|webp)$/i.test(
+      !/^\/globalassets\/(?:productimages|bilder|produktbilder)\/[^?#]+\.(?:jpe?g|jfif|png|webp)$/i.test(
         u.pathname,
       )
     )
@@ -90,12 +91,95 @@ function productName(node: JsonObject, parent?: JsonObject) {
   const name = parts.join(" · ");
   return name.length <= 500 ? name : undefined;
 }
-/** A search hit is only a candidate. Accept identity from explicit GTIN/ObsBygg SKU on the product page. */
+/** Read JSON data only; never execute scripts from the shop. */
+function currentPage(html: string): JsonObject | undefined {
+  const marker = /window\.CURRENT_PAGE\s*=\s*(\{)/g;
+  const match = marker.exec(html);
+  if (!match || marker.exec(html)) return;
+  const start = match.index + match[0].length - 1;
+  let depth = 0,
+    quoted = false,
+    escaped = false;
+  for (let i = start; i < html.length; i++) {
+    const c = html[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) {
+      try {
+        const value: unknown = JSON.parse(html.slice(start, i + 1));
+        return object(value) ? value : undefined;
+      } catch {
+        return;
+      }
+    }
+  }
+}
+function textContent(html: string) {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:nbsp|#160);/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#(\d+);/g, (_, n) =>
+      Number(n) <= 0x10ffff ? String.fromCodePoint(Number(n)) : "",
+    )
+    .normalize("NFC")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const sameSize = (a: string, b: string) =>
+  a.toLocaleLowerCase("nb").replace(/[\s×]/g, (c) => (c === "×" ? "x" : "")) ===
+  b.toLocaleLowerCase("nb").replace(/[\s×]/g, (c) => (c === "×" ? "x" : ""));
+function selectedProduct(html: string, ean: string) {
+  const state = currentPage(html);
+  if (!state || state.ean !== ean || state.variationCode !== `ObsBygg-${ean}`)
+    return;
+  const articles = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].flatMap(
+    (row) => {
+      const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(
+        (c) => textContent(c[1]),
+      );
+      return cells[0] === "Artikkelnummer" ? [cells[1]] : [];
+    },
+  );
+  if (!articles.length || articles.some((article) => article !== ean)) return;
+  const sizes = [...html.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)]
+    .map((m) => textContent(m[1]))
+    .filter((t) => /^Valgt størrelse\s*:/i.test(t))
+    .map((t) => t.replace(/^Valgt størrelse\s*:\s*/i, ""));
+  const variants = Array.isArray(state.sizeVariations)
+    ? state.sizeVariations.filter(object)
+    : [];
+  const selected = variants.filter((v) => v.code === `ObsBygg-${ean}`);
+  if (
+    variants.some(
+      (v) => typeof v.displayName === "string" && v.displayName.trim(),
+    ) ||
+    sizes.length
+  ) {
+    if (
+      !sizes.length ||
+      selected.length !== 1 ||
+      typeof selected[0].displayName !== "string" ||
+      sizes.some((size) => !sameSize(size, selected[0].displayName as string))
+    )
+      return;
+    return { state, size: selected[0].displayName as string };
+  }
+  return { state, size: undefined };
+}
+/** Require the landed page's active EAN, article number and size selector to agree with its JSON-LD variant. */
 export function productsFromHtml(
   html: string,
   ean: string,
   pageUrl: string,
 ): Product[] {
+  const selected = selectedProduct(html, ean);
+  if (!selected) return [];
   const matches: Product[] = [];
   function visit(value: unknown, parent?: JsonObject) {
     if (Array.isArray(value)) {
@@ -107,6 +191,12 @@ export function productsFromHtml(
       ? value["@type"]
       : [value["@type"]];
     if (types.includes("Product") && exactIdentity(value, ean)) {
+      if (
+        selected!.size &&
+        (typeof value.size !== "string" ||
+          !sameSize(selected!.size, value.size))
+      )
+        return;
       const name = productName(value, parent),
         url = obsUrl(value.url) || obsUrl(pageUrl);
       if (name && url) {
@@ -120,6 +210,15 @@ export function productsFromHtml(
           sourceUrl: source.href,
           ...(image ? { imageUrl: image } : {}),
           fetchedAt: new Date().toISOString(),
+          selectedVariantVerified: true,
+          sellingPoints: Array.isArray(selected!.state.productUsps)
+            ? selected!.state.productUsps
+                .filter(
+                  (v): v is string =>
+                    typeof v === "string" && !!v.trim() && v.length <= 180,
+                )
+                .slice(0, 5)
+            : [],
           ...(typeof value.size === "string" && value.size.length < 100
             ? { size: value.size }
             : {}),
@@ -193,7 +292,12 @@ export async function lookupFromObs(
       ...new Set(
         (exact.length ? exact : candidates)
           .map((p) => obsUrl(p.url))
-          .filter((url): url is string => !!url),
+          .filter((url): url is string => !!url)
+          .map((url) => {
+            const variantUrl = new URL(url);
+            variantUrl.searchParams.set("v", `ObsBygg-${ean}`);
+            return variantUrl.href;
+          }),
       ),
     ].slice(0, 4);
     if (!urls.length) return { status: "not_found" };
@@ -213,21 +317,6 @@ export async function lookupFromObs(
       if (resolved.some((r) => r.status === "rejected"))
         throw new ProductSourceError(signal.aborted ? "timeout" : "upstream");
       return { status: "not_found" };
-    }
-    // Only attach USPs from the exact search variant after the page verified its EAN.
-    for (const product of products) {
-      const hit = exact.find(
-        (p) =>
-          p.ean === product.ean &&
-          obsUrl(p.url)?.split("?")[0] === product.sourceUrl.split("?")[0],
-      );
-      if (hit && Array.isArray(hit.productUsps))
-        product.sellingPoints = hit.productUsps
-          .filter(
-            (v): v is string =>
-              typeof v === "string" && !!v.trim() && v.length <= 180,
-          )
-          .slice(0, 5);
     }
     if (products.length > 1) return { status: "ambiguous", products };
     return { status: "found", product: products[0] };

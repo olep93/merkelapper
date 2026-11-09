@@ -63,7 +63,7 @@ Portaltillegget er lagret på `codex/merkelapp-portal` i `olep93/jobbverktoy` og
 
 ## Obs BYGG-oppslag – testintegrasjon
 
-`POST /merkelapp/api/products` krever innlogging og Merkelapp-tilgang. En gyldig EAN sendes til nettbutikkens offentlige autocomplete-funksjon. Kandidaten er ikke et bekreftet treff før produktsidens JSON-LD har eksplisitt samsvarende GTIN eller `ObsBygg-<EAN>` som SKU. Variantens navn, størrelse/farge og bilde brukes. Ingen søkemotortreff eller EAN i fritekst brukes som identitetsbevis. Flere verifiserte treff må velges av bruker.
+`POST /merkelapp/api/products` krever innlogging og Merkelapp-tilgang. En gyldig EAN sendes til nettbutikkens offentlige autocomplete-funksjon. Oppslaget setter skannet EAN som valgt variant i lenken. Kandidaten godtas først når aktiv variant, synlig artikkelnummer, valgt størrelse (der størrelsesvelger finnes) og produktsidens JSON-LD samsvarer med skannet EAN. Et treff i variantlisten alene er ikke nok. Variantens navn, størrelse/farge og bilde brukes. Ingen søkemotortreff eller EAN i fritekst brukes som identitetsbevis. Flere verifiserte treff må velges av bruker.
 
 Dette er en begrenset testintegrasjon mot den offentlige nettbutikken, ikke en avtalt eller dokumentert leverandør-API. Den bruker ingen innlogging, API-nøkkel eller omgåelse av beskyttelse. Tilgangsfeil/429 stopper oppslaget og gir manuell reserveflyt. Nettbutikkens pris-/lagerfelt fra autocomplete brukes ikke og lagres ikke. Ikke bruk dette til bulkinnhenting.
 
