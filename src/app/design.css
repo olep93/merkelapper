@@ -57,6 +57,17 @@ body {
   gap: 8px;
   margin-left: 20px;
 }
+.header-trash {
+  margin-left: auto;
+}
+.header-trash.selected {
+  background: var(--pale);
+  border-color: #c8d7f6;
+  color: #174bb9;
+}
+.header-trash + .account-name {
+  margin-left: 0;
+}
 .account-name {
   font-size: 13px;
   overflow-wrap: anywhere;
@@ -842,6 +853,7 @@ input::placeholder {
     width: 32px;
   }
   .app-nav {
+    order: 1;
     width: 100%;
     display: grid;
     grid-template-columns: 1fr 1.25fr 1fr;

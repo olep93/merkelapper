@@ -1287,7 +1287,6 @@ export function Workspace() {
                   ["sheets", "Varetellingslapp", FileText],
                   ["area", "Områder med varer flere steder", Layers],
                   ["doors", "Dørmerking", Tag],
-                  ["trash", "Papirkurv", Trash2],
                 ] as const
               ).map(([v, label, Icon]) => (
                 <button
@@ -1302,6 +1301,18 @@ export function Workspace() {
                 </button>
               ))}
             </nav>
+          )}
+          {account && !gate && (
+            <button
+              className={`icon-button header-trash ${view === "trash" ? "selected" : ""}`}
+              aria-label="Papirkurv"
+              title="Papirkurv"
+              aria-current={view === "trash" ? "page" : undefined}
+              onClick={() => goTo("trash")}
+              disabled={busy}
+            >
+              <Trash2 size={18} />
+            </button>
           )}
           <span className="account-name">{account?.name}</span>
         </div>
