@@ -61,6 +61,7 @@ import {
   type SheetFilter,
 } from "@/lib/sheet-display";
 import { Scanner } from "./scanner";
+import { DoorMarking } from "./door-marking";
 import { ProductPhoto } from "./product-photo";
 import type { Product } from "@/lib/products";
 const API = "/merkelapp/api",
@@ -194,7 +195,7 @@ export function Workspace() {
   const nameTouched = useRef(false);
   const [pdfState, setPdfState] = useState(""),
     [filter, setFilter] = useState<SheetFilter>("all");
-  const [view, setView] = useState<"sheets" | "area" | "trash">("sheets"),
+  const [view, setView] = useState<"sheets" | "area" | "doors" | "trash">("sheets"),
     [picked, setPicked] = useState<Set<string>>(new Set()),
     [mergeError, setMergeError] = useState(""),
     [storeId, setStoreId] = useState("");
@@ -1285,6 +1286,7 @@ export function Workspace() {
                 [
                   ["sheets", "Varetellingslapp", FileText],
                   ["area", "Områder med varer flere steder", Layers],
+                  ["doors", "Dørmerking", Tag],
                   ["trash", "Papirkurv", Trash2],
                 ] as const
               ).map(([v, label, Icon]) => (
@@ -1343,6 +1345,8 @@ export function Workspace() {
             </button>
           )}
         </main>
+      ) : view === "doors" ? (
+        <DoorMarking />
       ) : (
         <main
           className={`workspace ${sheet ? "has-sheet" : "overview"} ${preview ? "is-preview" : ""}`}

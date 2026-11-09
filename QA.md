@@ -108,3 +108,13 @@ Kontrollert: migreringen og tilgangsreglene mot lokal Postgres (PGlite) med fore
 Kontrollert i portalens Supabase-prosjekt 2026-11-04: migreringen er kjørt, og kolonner, funksjoner, tilgangsregel og rettigheter er bekreftet. 2 av 3 eksisterende områdelister ble delt, og ingen vanlige lapper er delt. `pnpm build` er grønn.
 
 Ikke kontrollert: grensesnittet i nettleser med to ekte kontoer.
+
+## Dørmerking (testutgave)
+
+- Åpne **Dørmerking** etter innlogging. Velg **Prøv med en eksempeldør** eller skann/skriv EAN `7072354000770` og trykk **Hent dør**. Live-oppslag kontrollert 2026-11-09: Harmonie Silje Smart, 90 × 190 cm, H, produktbilde og fire salgsargumenter.
+- Kontroller opplysningene mot varen og huk av bekreftelsen. Manglende størrelse/slagretning fylles inn manuelt; H/V uten entydig retning blir ikke tolket som høyre eller venstre. Målene er variantens oppgitte størrelse/modulmål, ikke automatisk dørbladmål.
+- Velg ett eller to like merker. **Skriv ut / lagre PDF** bruker nettleserens utskrift: A4 stående, 100 %, ingen marger, uten topp-/bunntekst. Hvert merke er 105 × 297 mm. To merker skal gi én A4-side, med klippelinje i midten.
+- Utskrift krever navn, gyldig EAN, positive mål, slagretning, 1–5 argumenter, lastet bilde og bekreftet kontroll. For lange tekster blokkeres. Endret EAN skal straks fjerne forrige produkt; et forsinket svar må ikke fylle inn forrige vare.
+- Prøv ukjent/ugyldig EAN, avbrutt nett og manglende bilde. Ingen feiltilstand skal tillate utskrift av den forrige varen. Utkastet er midlertidig og slettes når Dørmerking-fanen lukkes.
+- Automatisk kontroll: `npm test`, `npm run typecheck`, `npm run build`. Nettleserkontroll gjennomført i Chrome med simulert innlogging og det faktiske produktresultatet fra Obs BYGG: desktop 1500 px, mobil 390 px, utskriftslayout, validering og nullstilling ved EAN-endring. Begge EAN-kodene dekodet fra rasterisert nettleser-PDF; én A4-side bekreftet.
+- Gjenstår fysisk utstyrstest i butikk: kameratillatelse/skanning på telefon, skriverens 100 %-skalering og lesing av strekkoden på papir. Produktbildet kan være felles for flere slagretninger, derfor står retningen separat og bildet er merket som illustrasjon.

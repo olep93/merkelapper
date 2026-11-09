@@ -1,0 +1,231 @@
+.door-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 32px;
+  max-width: 1500px;
+  padding: 32px;
+  margin: auto;
+  align-items: start;
+}
+.door-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: white;
+  border: 1px solid #dce2e9;
+  border-radius: 16px;
+}
+.door-controls h1,
+.door-controls p {
+  margin: 0;
+}
+.door-controls h1 {
+  font-size: 30px;
+}
+.door-controls p,
+.door-controls small {
+  color: #536174;
+  line-height: 1.5;
+}
+.door-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.door-controls input,
+.door-controls select,
+.door-controls textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #b9c4d1;
+  border-radius: 8px;
+  padding: 10px;
+  background: white;
+  color: #17263a;
+  font: inherit;
+}
+.door-controls textarea {
+  resize: vertical;
+}
+.door-controls form {
+  display: grid;
+  gap: 12px;
+}
+.door-actions,
+.door-dimensions {
+  display: flex;
+  gap: 10px;
+}
+.door-dimensions > label {
+  flex: 1;
+  min-width: 0;
+}
+.door-controls .door-check {
+  flex-direction: row;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.door-check input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.door-preview {
+  overflow: auto;
+  padding: 0 8px 20px;
+}
+.door-preview > p {
+  margin: 0 0 16px;
+  color: #536174;
+}
+.door-sheet {
+  width: 210mm;
+  height: 297mm;
+  display: flex;
+  background: white;
+  box-shadow: 0 4px 24px #17263a18;
+  color: #111;
+  font-family: Arial, sans-serif;
+}
+.door-label {
+  box-sizing: border-box;
+  width: 105mm;
+  height: 297mm;
+  flex-shrink: 0;
+  padding: 8mm;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px dashed #aaa;
+}
+.door-label-kicker {
+  font-size: 9pt;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: #485263;
+  margin-bottom: 3mm;
+}
+.door-label h2 {
+  font-size: 18pt;
+  line-height: 1.15;
+  margin: 0 0 3mm;
+  overflow-wrap: anywhere;
+}
+.door-image {
+  flex: 1;
+  min-height: 35mm;
+  max-height: 100mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.door-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.door-image > span {
+  color: #697587;
+  text-align: center;
+}
+.door-image-note {
+  display: block;
+  text-align: center;
+  font-size: 7pt;
+  margin: 2mm 0 3mm;
+}
+.door-specs {
+  display: grid;
+  gap: 3mm;
+  padding: 4mm 0;
+  border-block: 1px solid #bdc5ce;
+}
+.door-specs div {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+}
+.door-specs small {
+  font-size: 8pt;
+  letter-spacing: 0.3px;
+}
+.door-specs strong {
+  font-size: 20pt;
+  line-height: 1.1;
+}
+.door-arguments {
+  margin: 4mm 0;
+  padding-left: 4mm;
+  font-size: 10pt;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.door-arguments li + li {
+  margin-top: 2mm;
+}
+.door-barcode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 2mm;
+  background: white;
+}
+.door-barcode svg {
+  flex-shrink: 0;
+  max-width: none;
+}
+.door-barcode strong {
+  font-size: 11pt;
+  letter-spacing: 1px;
+}
+.door-label footer {
+  margin-top: 3mm;
+  text-align: center;
+  font-size: 7pt;
+  color: #485263;
+}
+@media (max-width: 1000px) {
+  .door-workspace {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 20px;
+  }
+  .door-controls {
+    max-width: 650px;
+    width: 100%;
+  }
+}
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  body:has(.door-workspace) {
+    display: block !important;
+    background: white;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body:has(.door-workspace) .app-header,
+  .door-controls,
+  .door-preview > p {
+    display: none !important;
+  }
+  .door-workspace {
+    display: block;
+    padding: 0;
+    margin: 0;
+    max-width: none;
+  }
+  .door-preview {
+    padding: 0;
+    overflow: visible;
+  }
+  .door-sheet {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}

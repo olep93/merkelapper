@@ -7,6 +7,8 @@ export type Product = {
   sourceUrl: string;
   imageUrl?: string;
   fetchedAt: string;
+  size?: string;
+  sellingPoints?: string[];
 };
 export type LookupResult =
   | { status: "found"; product: Product }
@@ -118,6 +120,9 @@ export function productsFromHtml(
           sourceUrl: source.href,
           ...(image ? { imageUrl: image } : {}),
           fetchedAt: new Date().toISOString(),
+          ...(typeof value.size === "string" && value.size.length < 100
+            ? { size: value.size }
+            : {}),
         });
       }
     }
@@ -209,6 +214,21 @@ export async function lookupFromObs(
         throw new ProductSourceError(signal.aborted ? "timeout" : "upstream");
       return { status: "not_found" };
     }
+    // Only attach USPs from the exact search variant after the page verified its EAN.
+    for (const product of products) {
+      const hit = exact.find(
+        (p) =>
+          p.ean === product.ean &&
+          obsUrl(p.url)?.split("?")[0] === product.sourceUrl.split("?")[0],
+      );
+      if (hit && Array.isArray(hit.productUsps))
+        product.sellingPoints = hit.productUsps
+          .filter(
+            (v): v is string =>
+              typeof v === "string" && !!v.trim() && v.length <= 180,
+          )
+          .slice(0, 5);
+    }
     if (products.length > 1) return { status: "ambiguous", products };
     return { status: "found", product: products[0] };
   } catch (e) {
@@ -216,7 +236,7 @@ export async function lookupFromObs(
     throw new ProductSourceError(signal.aborted ? "timeout" : "upstream");
   }
 }
-// Store only the minimal verified name/image/source, never upstream price/stock responses.
+// Cache verified product identity, variant size and sales points; never price/stock responses.
 const cache = new Map<string, { expires: number; result: LookupResult }>();
 const pending = new Map<string, Promise<LookupResult>>();
 export async function lookupProduct(ean: string): Promise<LookupResult> {
