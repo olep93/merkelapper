@@ -59,3 +59,12 @@ export type DoorLabelData = {
   product: import("./products").Product;
 };
 export type DoorPage = [DoorLabelData | null, DoorLabelData | null];
+
+/** Fill an existing gap before allocating another A4 sheet. */
+export function nextDoorSlot(pages: DoorPage[]): [number, number] | null {
+  for (let page = 0; page < pages.length; page++) {
+    const slot = pages[page].findIndex((label) => label === null);
+    if (slot !== -1) return [page, slot];
+  }
+  return pages.length < 30 ? [pages.length, 0] : null;
+}

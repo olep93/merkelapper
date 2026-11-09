@@ -114,3 +114,34 @@ test("size and arguments belong to the verified EAN, not a sibling variant", asy
       "5 års formgaranti",
     ]);
 });
+
+test("two doors fill a sheet, the third starts another, and gaps are reused", async () => {
+  const { nextDoorSlot } = await import("../src/lib/door-marking");
+  const label = {
+    ean: "7072354000770",
+    name: "Dør",
+    details: doorDetails("90x190 cm H"),
+    points: ["Test"],
+    product: {
+      ean: "7072354000770",
+      name: "Dør",
+      source: "Obs BYGG" as const,
+      sourceUrl: "https://www.obsbygg.no/dor/123",
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+  assert.deepEqual(nextDoorSlot([[null, null]]), [0, 0]);
+  assert.deepEqual(nextDoorSlot([[label, null]]), [0, 1]);
+  assert.deepEqual(nextDoorSlot([[label, label]]), [1, 0]);
+  assert.deepEqual(
+    nextDoorSlot([
+      [label, null],
+      [label, label],
+    ]),
+    [0, 1],
+  );
+  assert.equal(
+    nextDoorSlot(Array.from({ length: 30 }, () => [label, label])),
+    null,
+  );
+});
