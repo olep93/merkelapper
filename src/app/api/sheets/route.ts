@@ -5,9 +5,15 @@ import { z } from "zod";
 export async function GET(request: Request) {
   try {
     const { db } = await requireUser();
+    const params = new URL(request.url).searchParams;
     let query = db.from("merkelapp_sheets").select("*");
-    if (new URL(request.url).searchParams.get("include_deleted") !== "1")
+    if (params.get("include_deleted") !== "1")
       query = query.is("deleted_at", null);
+    // The door book is one private record per account, kept apart from the sheet lists.
+    query =
+      params.get("doors") === "1"
+        ? query.eq("body->>kind", "doors")
+        : query.or("body->>kind.is.null,body->>kind.neq.doors");
     const { data, error } = await query
       .order("updated_at", { ascending: false })
       .limit(500);

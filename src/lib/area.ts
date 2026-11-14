@@ -17,7 +17,8 @@ export function storeForNewSheet(
   requested: string | undefined,
   stores: { id: string }[],
 ) {
-  if (requested || !body.kind) return requested;
+  if (requested || (body.kind !== "area" && body.kind !== "merged"))
+    return requested;
   return stores.length === 1 ? stores[0].id : undefined;
 }
 // Suggests the next name in a numbered series: "Skruer 3" gives "Skruer 4".

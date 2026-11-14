@@ -276,6 +276,8 @@ test("a new area list without a chosen store goes to the user's only store", () 
   assert.equal(storeForNewSheet(area, undefined, two), undefined);
   assert.equal(storeForNewSheet(area, "b", two), "b");
   assert.equal(storeForNewSheet(label, undefined, one), undefined);
+  const doors = { ...area, kind: "doors" as const };
+  assert.equal(storeForNewSheet(doors, undefined, one), undefined);
 });
 
 test("a merged list can be merged again without losing the totals", () => {

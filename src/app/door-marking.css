@@ -669,6 +669,9 @@
   align-items: center;
   flex-wrap: wrap;
 }
+.door-canvas-actions > .door-save {
+  margin-left: auto;
+}
 .door-canvas-actions > small {
   display: flex;
   align-items: center;

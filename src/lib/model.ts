@@ -76,7 +76,12 @@ export const bodySchema = z
     date: z.iso.date(),
     location: z.string().trim().max(120),
     lines: z.array(lineSchema).max(500),
-    kind: z.enum(["area", "merged"]).optional(),
+    kind: z.enum(["area", "merged", "doors"]).optional(),
+    // Door labels are checked in full when they are loaded; here only the size is bounded.
+    doors: z
+      .array(z.tuple([z.unknown(), z.unknown()]))
+      .max(30)
+      .optional(),
     sources: z
       .array(
         z.object({

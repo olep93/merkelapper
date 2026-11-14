@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Check,
   Undo2,
+  Save,
+  LoaderCircle,
 } from "lucide-react";
 import { Scanner } from "./scanner";
 import { Dialog } from "./dialog";
@@ -29,6 +31,7 @@ import {
   type DoorPage,
 } from "@/lib/door-marking";
 import type { Product } from "@/lib/products";
+import type { Sheet } from "@/lib/model";
 import "./door-marking.css";
 const savedLabelSchema = z
   .object({
@@ -53,6 +56,23 @@ const bookSchema = z
   .array(z.tuple([savedLabelSchema.nullable(), savedLabelSchema.nullable()]))
   .min(1)
   .max(30);
+type SaveState = "saved" | "dirty" | "saving" | "error";
+const sameLabel = (a: DoorLabelData, b: DoorLabelData) =>
+  JSON.stringify([a.ean, a.name, a.details, a.points]) ===
+  JSON.stringify([b.ean, b.name, b.details, b.points]);
+async function doorApi(path: string, init?: RequestInit) {
+  const response = await fetch(`/merkelapp/api${path}`, {
+    cache: "no-store",
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw Object.assign(new Error(data.error || "Kunne ikke lagre."), {
+      status: response.status,
+    });
+  return data;
+}
 export function DoorMarking({ accountId }: { accountId: string }) {
   const [pages, setPages] = useState<DoorPage[]>([[null, null]]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -78,25 +98,145 @@ export function DoorMarking({ accountId }: { accountId: string }) {
   const printRoot = useRef<HTMLDivElement>(null);
   const draftRoot = useRef<HTMLDivElement>(null);
   const generation = useRef(0);
-  const storageKey = `merkelapp-doors-v1-${accountId}`;
-  useEffect(() => {
+  // Older versions kept the labels on the device only. They are moved to the account once.
+  const legacyKey = `merkelapp-doors-v1-${accountId}`;
+  const book = useRef<Sheet | null>(null),
+    pagesRef = useRef(pages),
+    saving = useRef(false);
+  const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [loaded, setLoaded] = useState(false);
+  pagesRef.current = pages;
+  const bookBody = (next: DoorPage[]) => ({
+    title: "Dørmerking",
+    date: new Date().toISOString().slice(0, 10),
+    location: "",
+    lines: [],
+    kind: "doors" as const,
+    doors: next,
+  });
+  async function saveBook() {
+    if (saving.current) return;
+    saving.current = true;
+    setSaveState("saving");
+    const sent = pagesRef.current;
     try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const restored = bookSchema.safeParse(JSON.parse(stored));
-        if (restored.success) {
-          setPages(restored.data as DoorPage[]);
-        } else
-          setStorageError(
-            "Tidligere ark kunne ikke leses. Legg til dørene på nytt.",
-          );
+      const write = (current: Sheet | null) =>
+        current
+          ? doorApi(`/sheets/${current.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                action: "save",
+                version: current.version,
+                operation: crypto.randomUUID(),
+                body: bookBody(sent),
+              }),
+            })
+          : doorApi("/sheets", {
+              method: "POST",
+              body: JSON.stringify({
+                id: crypto.randomUUID(),
+                operation: crypto.randomUUID(),
+                body: bookBody(sent),
+              }),
+            });
+      try {
+        book.current = await write(book.current);
+      } catch (e) {
+        // Saved from another device in the meantime: this device's sheet is the one being worked on.
+        if ((e as { status?: number }).status !== 409) throw e;
+        const [latest] = await doorApi("/sheets?doors=1");
+        book.current = await write(latest || null);
       }
-    } catch {
+      setStorageError("");
+      setSaveState(pagesRef.current === sent ? "saved" : "dirty");
+    } catch (e) {
+      setSaveState("error");
       setStorageError(
-        "Lokal lagring er utilgjengelig. Behold fanen åpen til du har skrevet ut.",
+        `${(e as Error).message} Dørmerkene er ikke lagret på kontoen ennå. Prøv igjen før du lukker fanen.`,
       );
+    } finally {
+      saving.current = false;
     }
-  }, [storageKey]);
+  }
+  async function loadBook(initial = false) {
+    try {
+      const [latest]: Sheet[] = await doorApi("/sheets?doors=1");
+      if (!initial && (saving.current || saveState !== "saved")) return;
+      const parsed = latest
+        ? bookSchema.safeParse(latest.body.doors)
+        : null;
+      let next = parsed?.success ? (parsed.data as DoorPage[]) : null;
+      book.current = latest || null;
+      let migrated = false;
+      if (initial) {
+        try {
+          const stored = localStorage.getItem(legacyKey);
+          const local = stored ? bookSchema.safeParse(JSON.parse(stored)) : null;
+          if (local?.success) {
+            next = next ? next.map((p) => [...p] as DoorPage) : [[null, null]];
+            const have = next.flat().filter((d): d is DoorLabelData => !!d);
+            for (const label of (local.data as DoorPage[])
+              .flat()
+              .filter((d): d is DoorLabelData => !!d)) {
+              if (have.some((d) => sameLabel(d, label))) continue;
+              const slot = nextDoorSlot(next);
+              if (!slot) break;
+              if (slot[0] === next.length) next.push([null, null]);
+              next[slot[0]][slot[1]] = label;
+              have.push(label);
+              migrated = true;
+            }
+          }
+        } catch {
+          /* Without device storage there is nothing to move. */
+        }
+      }
+      if (next) setPages(next);
+      if (latest && !parsed?.success)
+        setStorageError("Lagrede ark kunne ikke leses. Legg til dørene på nytt.");
+      if (migrated) {
+        pagesRef.current = next!;
+        await saveBook();
+      }
+      if (initial)
+        try {
+          if (!migrated || book.current) localStorage.removeItem(legacyKey);
+        } catch {}
+    } catch {
+      if (initial)
+        setStorageError(
+          "Kunne ikke hente dørmerkene fra kontoen. Last siden på nytt.",
+        );
+    } finally {
+      setLoaded(true);
+    }
+  }
+  useEffect(() => {
+    void loadBook(true);
+  }, [legacyKey]);
+  useEffect(() => {
+    if (saveState === "saved") return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saveState]);
+  useEffect(() => {
+    if (saveState !== "dirty") return;
+    const t = setTimeout(() => void saveBook(), 800);
+    return () => clearTimeout(t);
+  }, [saveState, pages]);
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && !editor && !slotPicker)
+        void loadBook();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  });
   useEffect(
     () => () => {
       generation.current++;
@@ -155,14 +295,8 @@ export function DoorMarking({ accountId }: { accountId: string }) {
   }, [editor, name, argumentsText, details, pages, imageStates]);
   function storePages(next: DoorPage[]) {
     setPages(next);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      setStorageError("");
-    } catch {
-      setStorageError(
-        "Kunne ikke lagre på enheten. Skriv ut før du lukker fanen.",
-      );
-    }
+    pagesRef.current = next;
+    setSaveState("dirty");
   }
   function closeEditor() {
     setEditor(false);
@@ -351,10 +485,25 @@ export function DoorMarking({ accountId }: { accountId: string }) {
           <ScanLine size={18} />
           Skann neste dør
         </button>
-        <small>
-          <Check size={14} />
-          Lagres automatisk
-        </small>
+        <button
+          className={`button ${saveState === "saved" ? "secondary" : "primary"} door-save`}
+          disabled={!loaded || saveState === "saved" || saveState === "saving"}
+          onClick={() => void saveBook()}
+        >
+          {saveState === "saving" ? (
+            <>
+              <LoaderCircle size={18} className="spin" /> Lagrer …
+            </>
+          ) : saveState === "saved" ? (
+            <>
+              <Check size={18} /> Lagret
+            </>
+          ) : (
+            <>
+              <Save size={18} /> Lagre
+            </>
+          )}
+        </button>
       </section>
       <section className="door-canvas-messages">
         {message && (
